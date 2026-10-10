@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.13.1
+
+- Chat answers are formatted: bold, italic, code, code blocks, headings and lists.
+  Model output is escaped first, so an answer can never load an image, open a link
+  or inject markup.
+- NOVA knows what it is: asked "what are you?", it describes its three views, that
+  everything runs locally, and which model it's running on.
+- New screenshots.
+
 ## 0.13.0 — first public release
 
 - **CHAT** with local models through Ollama, with live system lookups and an

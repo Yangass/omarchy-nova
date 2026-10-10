@@ -172,6 +172,41 @@ Ui.Panel {
   property var catalogModels: []
   // The shipped model list's date: its newest checked entry (catalog upkeep, 2026-10-10).
   // Installs follow small Ollama changes by themselves; an old list only misses newer models.
+  // Chat answers as light formatting (2026-10-10). Model output is untrusted: everything is
+  // HTML-escaped first, then only bold, italic, code, code blocks, headings and lists are
+  // added back as tags NOVA writes itself. Qt's own Markdown mode fetched image URLs from
+  // the text and rendered raw HTML, so it is not used: images show their alt text, links
+  // show as text with the address, and nothing is fetched or clickable.
+  function chatMarkdownHtml(source) {
+    function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;") }
+    var codeColor = String(root.accent), mutedColor = String(root.muted)
+    function inline(s) {
+      var codes = []
+      s = s.replace(/`([^`]+)`/g, function(m, c) { codes.push(c); return "\u0001" + (codes.length - 1) + "\u0001" })
+      s = s.replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+      s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, "$1 ($2)")
+      s = s.replace(/\*\*(?=\S)(.+?\S)\*\*/g, "<b>$1</b>").replace(/__(?=\S)(.+?\S)__/g, "<b>$1</b>")
+      s = s.replace(/(^|[^*\w])\*(?=\S)([^*]*?\S)\*(?![*\w])/g, "$1<i>$2</i>")
+      return s.replace(/\u0001(\d+)\u0001/g, function(m, i) { return "<span style=\"color:" + codeColor + "\">" + codes[Number(i)] + "</span>" })
+    }
+    function indent(spaces) { return new Array(Math.floor(spaces.length / 2) * 3 + 1).join("&nbsp;") }
+    var lines = esc(String(source || "")).split("\n"), out = [], fence = null
+    lines.forEach(function(line) {
+      if (/^\s*```/.test(line)) {
+        if (fence === null) { fence = []; return }
+        out.push("<pre style=\"color:" + codeColor + "\">" + fence.join("\n") + "</pre>"); fence = null; return
+      }
+      if (fence !== null) { fence.push(line); return }
+      var m
+      if ((m = line.match(/^#{1,6}\s+(.*)$/))) out.push("<b>" + inline(m[1]) + "</b>")
+      else if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) out.push("<span style=\"color:" + mutedColor + "\">──────</span>")
+      else if ((m = line.match(/^(\s*)[-*+]\s+(.*)$/))) out.push(indent(m[1]) + "•&nbsp;" + inline(m[2]))
+      else if ((m = line.match(/^(\s*)(\d+)[.)]\s+(.*)$/))) out.push(indent(m[1]) + m[2] + ".&nbsp;" + inline(m[3]))
+      else out.push(inline(line))
+    })
+    if (fence !== null) out.push("<pre style=\"color:" + codeColor + "\">" + fence.join("\n") + "</pre>")  // still streaming
+    return out.join("<br>").replace(/<br>(<pre)/g, "$1").replace(/(<\/pre>)<br>/g, "$1")
+  }
   function modelListLine(nowMs) {
     var newest = ""
     catalogModels.forEach(function(item) {
@@ -3400,12 +3435,12 @@ Ui.Panel {
       anchors.topMargin: header.height + (chatLine.hasSources ? sourceLabel.implicitHeight + Style.spacing.xxs : 0) + Style.spacing.xs
       width: parent.width
       height: contentHeight
-      text: chatLine.text
+      text: chatLine.role === "assistant" ? root.chatMarkdownHtml(chatLine.text) : chatLine.text
       readOnly: true
       selectByMouse: true
       persistentSelection: true
       wrapMode: TextEdit.Wrap
-      textFormat: TextEdit.PlainText
+      textFormat: chatLine.role === "assistant" ? TextEdit.RichText : TextEdit.PlainText
       color: root.foreground
       selectionColor: Style.selectionFillFor(root.foreground, root.accent)
       selectedTextColor: root.foreground

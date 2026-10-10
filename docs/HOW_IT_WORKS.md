@@ -14,7 +14,8 @@
 
 - **Panel** (`Panel.qml`, `BarWidget.qml`): everything you see. It holds no secrets
   and makes no decisions about safety; it shows what the services report and sends
-  your clicks.
+  your clicks. Chat answers get light formatting (bold, code, lists); the model's
+  text is escaped first, so an answer can't load images, follow links or add markup.
 - **novad** (`novad/`): the brain. Chat with tool calls, model selection and loading,
   the model catalog, memory-fit estimates, approvals and the install lifecycle.
   Python standard library only.

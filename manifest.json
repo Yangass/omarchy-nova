@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.yangass.nova",
   "name": "NOVA",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "author": "Konstantin Tarasevic",
   "license": "MIT",
   "description": "Run AI models on your own computer without the terminal: NOVA checks your hardware, shows which local models fit, installs the one you pick with your approval, and gives you a private chat in the top bar.",

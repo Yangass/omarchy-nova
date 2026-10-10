@@ -254,6 +254,22 @@ QML_CHECK = r'''
         check(item("machineVersions").text.indexOf("Ollama version unknown") > 0, "installed, no version")
         previewHost.gpuAvailable = true; novaPanel.graphicsDevices = null; novaPanel.providerVersion = "0.33.3"
       })
+      test("chat answers: light Markdown, and model output can never add tags or fetch anything", function() {
+        var html = novaPanel.chatMarkdownHtml
+        check(html("**What I am**") === "<b>What I am</b>", "bold: " + html("**What I am**"))
+        check(html("an *every* action") === "an <i>every</i> action", "italic: " + html("an *every* action"))
+        check(html("2 * 3 * 4") === "2 * 3 * 4", "lone stars stay: " + html("2 * 3 * 4"))
+        check(html("**What I *don't* do**") === "<b>What I <i>don't</i> do</b>", "nested: " + html("**What I *don't* do**"))
+        check(html("use `ollama list`").indexOf(">ollama list</span>") > 0, "code: " + html("use `ollama list`"))
+        check(html("## Heading") === "<b>Heading</b>", "heading: " + html("## Heading"))
+        check(html("- one\n  - two") === "•&nbsp;one<br>&nbsp;&nbsp;&nbsp;•&nbsp;two", "list: " + html("- one\n  - two"))
+        check(html("1. first") === "1.&nbsp;first", "numbered: " + html("1. first"))
+        check(html("```\nx <y>\n```").indexOf("<pre") === 0 && html("```\nx <y>\n```").indexOf("x &lt;y&gt;") > 0, "fence: " + html("```\nx <y>\n```"))
+        check(html("```\nstill streaming").indexOf("<pre") === 0, "open fence while streaming")
+        var hostile = html("<b>raw</b> <img src=\"http://127.0.0.1:1/x\"> ![pic](http://127.0.0.1:1/p.png) [site](http://127.0.0.1:1/l) <script>x</script> & done")
+        check(hostile.indexOf("<img") < 0 && hostile.indexOf("<script") < 0 && hostile.indexOf("<a ") < 0 && hostile.indexOf("<b>raw") < 0, "tags leaked: " + hostile)
+        check(hostile.indexOf("&lt;b&gt;raw&lt;/b&gt;") === 0 && hostile.indexOf(" pic ") > 0 && hostile.indexOf("site (http://127.0.0.1:1/l)") > 0 && hostile.indexOf("&amp; done") > 0, "shown as text: " + hostile)
+      })
       test("catalog upkeep: VERSIONS dates the model list and nudges after 60 days", function() {
         var saved = novaPanel.catalogModels
         novaPanel.catalogModels = [{catalog_id: "a", metadata: {checked_at: "2026-09-08T12:21:36Z"}},
