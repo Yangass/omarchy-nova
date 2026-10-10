@@ -1703,6 +1703,12 @@ Ui.Panel {
       xhr.send()
     } catch (error) { removalBusy = false; reportModelResult(model, "NOVA's background service didn't answer. Nothing was deleted.", false) }
   }
+  // Run 7: CPU-only machines report 0 graphics bytes; show the RAM the model holds instead.
+  function residentSizeLabel(modelData) {
+    if (!modelData) return ""
+    if (modelData.vram_bytes > 0) return bytesLabel(modelData.vram_bytes)
+    return modelData.memory_bytes > 0 ? bytesLabel(modelData.memory_bytes) + " in RAM" : ""
+  }
   // QWEN-12: free GPU memory now (reversible: the model loads again when next used).
   function unloadTooltip(modelData) {
     var bytes = modelData && (modelData.vram_bytes > 0 ? modelData.vram_bytes : modelData.memory_bytes)
@@ -4748,7 +4754,10 @@ Ui.Panel {
                         }
                         CompactModelButton {
                           objectName: "openCliButton"
+                          // Run 7: a fresh install has no profile file, so the button could only fail; hide it.
+                          // Unknown availability (action service down) keeps it, with the reason on click.
                           visible: modelData !== null && typeof modelData !== "undefined" && modelData.provider === "ollama"
+                            && !(root.cliState && root.cliState.configured === false)
                           text: root.cliRunning(modelData) ? "CLI RUNNING" : "OPEN CLI"
                           tooltipText: root.cliCanLaunch(modelData)
                             ? "Open the configured coding CLI for " + modelData.id + " in a new terminal"
@@ -5238,7 +5247,7 @@ Ui.Panel {
                       width: parent.width
                       height: Math.max(gpuMemoryName.implicitHeight, gpuMemorySize.implicitHeight)
                       Text { id: gpuMemoryName; objectName: "gpuMemoryModelName"; width: parent.width - gpuMemorySize.implicitWidth - Style.spacing.sm; elide: Text.ElideRight; text: root.modelPlainName(modelData.id); color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; font.bold: true }
-                      Text { id: gpuMemorySize; objectName: "gpuMemoryModelSize"; anchors.right: parent.right; text: typeof modelData.vram_bytes === "number" ? root.bytesLabel(modelData.vram_bytes) : ""; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                      Text { id: gpuMemorySize; objectName: "gpuMemoryModelSize"; anchors.right: parent.right; text: root.residentSizeLabel(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                     }
                     Item {
                       width: parent.width

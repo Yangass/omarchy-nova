@@ -202,6 +202,9 @@ QML_CHECK = r'''
         var row = gpuRows.itemAt(0)
         check(findChild(row, "gpuMemoryModelName").text === "nova-code-qwen38-96k" && findChild(row, "gpuMemoryModelSize").text === "16.5 GiB", "row text")
         check(findChild(row, "freeGpuMemoryButton").visible && findChild(row, "freeGpuMemoryButton").text === "FREE NOW", "FREE NOW missing")
+        // Run 7: a model in RAM (no graphics card) reports 0 graphics bytes; show its RAM size.
+        novaPanel.discoveredModels = [{id:"llama3.2:1b", provider:"ollama", available:true, resident:true, vram_bytes:0, memory_bytes:1288490189}]; wait(80)
+        check(findChild(item("gpuMemoryRepeater").itemAt(0), "gpuMemoryModelSize").text === "1.2 GiB in RAM", "CPU row: " + findChild(item("gpuMemoryRepeater").itemAt(0), "gpuMemoryModelSize").text)
         var versions = item("machineVersions").text
         check(versions.indexOf("NOVA " + novaPanel.displayUiIdentity) === 0 && versions.indexOf("Ollama 0.33.3") > 0 && versions.indexOf("NVIDIA GeForce RTX 5090 · driver 610.57") > 0, "versions: " + versions)
         check(item("corePanel").height >= Style.space(72) - 1 && item("machineDetailsViewport").y + item("machineDetailsViewport").height <= item("fixedBottom").y + 1

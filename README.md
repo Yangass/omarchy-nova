@@ -45,14 +45,16 @@ required: NOVA suggests smaller models for computers without one.
    ```
    https://github.com/Yangass/omarchy-nova
    ```
+   Omarchy then warns that plugins run code on your computer. It shows this for every
+   plugin; [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) explains what NOVA runs.
    Answer **Yes** to enable it and keep the suggested position in the bar.
 2. Click the new NOVA icon in the top bar. NOVA shows one step at a time:
    1. **SET UP NOVA** installs its small background helpers (no password needed).
    2. **INSTALL OLLAMA** installs the free engine that runs the models, if you don't
       have it yet. A terminal opens and asks for your password once; that's all the
       terminal you'll need.
-   3. Open **MODELS** → **DOWNLOADS**, pick a model marked as a good fit, click its
-      **INSTALL** button and approve.
+   3. Open **MODELS** and click **BROWSE MODEL DOWNLOADS** at the bottom. Pick a model
+      marked as a good fit, click its **INSTALL** button and approve.
 3. When the download finishes, click **LOAD AND USE** and start chatting in **CHAT**.
 
 Models take 1–25 GB of disk space each; NOVA tells you the size before you start.
@@ -91,6 +93,9 @@ Its helpers listen only on your own computer (`127.0.0.1`). No account, no telem
   models run on the processor: slower, but small models work fine.
 - **More models:** anything from [Ollama's library](https://ollama.com/library) can be
   added under **ADD A MODEL**; NOVA checks it the same way before you install.
+- **Coding CLI (advanced):** NOVA can open a coding assistant in a terminal that uses
+  a local model. It needs a setup file, so the **OPEN CLI** button only appears once
+  one exists; a guided setup is planned.
 - **How it works inside:** [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md).
 
 ## Who makes it

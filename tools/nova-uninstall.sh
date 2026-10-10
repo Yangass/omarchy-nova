@@ -32,6 +32,6 @@ main() {
   echo
   echo "NOVA is removed."
   echo "Optional: list models with 'ollama list', delete one with 'ollama rm <name>'."
-  echo "Optional: NOVA's settings and chats are in ~/.config/nova and ~/.local/state/nova."
+  echo "Optional: NOVA's settings and install records are in ~/.config/nova and ~/.local/state/nova."
 }
 main "$@"

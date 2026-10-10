@@ -716,7 +716,7 @@ def summary(operation: str, result: dict, mode: str) -> str:
     if result.get("dry_run"):
         return "Plan only: nothing was changed. Re-run without --dry-run to apply."
     if operation == "remove":
-        return "NOVA's services and owned files were removed. Your models, settings and history are kept."
+        return "NOVA's services and owned files were removed. Your models, settings and install records are kept."
     if operation in ("setup", "update"):
         lines = ["\u2713 NOVA is " + ("installed." if operation == "setup" else "updated."),
                  "  Background services: novad, nova-system-tools, nova-actions (running for your user).",

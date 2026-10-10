@@ -62,6 +62,8 @@ class Handler(BaseHTTPRequestHandler):
             mode = MODE["profiles"]
             if mode == "unavailable":
                 self.reply(503, {"error": "action_executor_unavailable"}); return
+            if mode == "none":
+                self.reply(200, {"configured": False, "error": None, "profiles": [], "checked_at": "fixture"}); return
             if mode == "online":
                 self.reply(200, {"configured": True, "error": None, "checked_at": "fixture",
                                  "profiles": [profile()] + ONLINE}); return
@@ -289,6 +291,13 @@ QML_CHECK = r'''
         check(novaPanel.cliState === null && !child(0, "openCliButton").launchable, "unknown treated as available")
         click(child(0, "openCliButton"))
         check(child(0, "cliStatusText").text.indexOf("Coding CLI availability is unknown") === 0, "unknown reason wrong")
+      })
+      test("no profile file hides OPEN CLI (fresh install)", function() {
+        profiles("none"); wait(200)
+        check(novaPanel.cliState && novaPanel.cliState.configured === false, "state not loaded")
+        check(!child(0, "openCliButton").visible, "OPEN CLI shown without any profile")
+        profiles("available"); wait(200)
+        check(child(0, "openCliButton").visible, "OPEN CLI hidden with a profile")
       })
       console.warn("OPEN_CLI_RESULTS " + JSON.stringify(results))
     }

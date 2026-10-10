@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.13.2
+
+From a fresh-install test that followed this README word for word:
+
+- MACHINE shows the memory a loaded model uses on computers without a graphics card
+  (it said 0.0 GiB).
+- **OPEN CLI** only appears once a coding CLI is set up; on a fresh install it could
+  only say that none was configured.
+- NOVA describes Omarchy correctly: the desktop it runs in, not a plugin.
+- README: the model download button is called **BROWSE MODEL DOWNLOADS**; Omarchy's
+  plugin warning is explained; the coding CLI is mentioned.
+- The removal message no longer says chats are kept (NOVA doesn't save chats).
+
 ## 0.13.1
 
 - Chat answers are formatted: bold, italic, code, code blocks, headings and lists.
