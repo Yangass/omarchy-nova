@@ -1,0 +1,20 @@
+[Unit]
+Description=NOVA Fixed Approved Actions
+# Terminal launches require the compositor's UWSM session environment.  Keep
+# this executor bound to that session instead of retaining stale socket values.
+After=graphical-session.target
+PartOf=graphical-session.target
+ConditionEnvironment=WAYLAND_DISPLAY
+
+[Service]
+Type=simple
+WorkingDirectory=@NOVA_ROOT@/nova-actions
+ExecStart=@PYTHON@ server.py
+Restart=on-failure
+RestartSec=2
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+EnvironmentFile=-%t/uwsm/env_session.conf
+
+[Install]
+WantedBy=graphical-session.target

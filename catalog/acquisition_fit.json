@@ -1,0 +1,480 @@
+{
+  "version": 1,
+  "observed_at": "2026-09-09T13:52:11.625429+00:00",
+  "source": "local_show_or_registry_gguf_probe",
+  "records": [
+    {
+      "catalog_id": "qwen3.5-35b-q4-k-m",
+      "revision": "72aac7c28be8ff9b81c2a270eb489c88e6d822a76ec0cb7bf34d965768848567",
+      "provider": "ollama",
+      "artifact_id": "qwen3.5:35b",
+      "metadata": {
+        "size_bytes": 22069592181,
+        "context_length": 262144,
+        "parameter_size": "34.7B",
+        "family": "qwen35moe",
+        "format": "gguf",
+        "quantization": "Q4_K_M",
+        "architecture": "qwen35moe",
+        "attention": {
+          "layers": 40,
+          "kv_heads": 2,
+          "key_length": 256,
+          "value_length": 256,
+          "full_attention_layers": 10
+        },
+        "fit_metadata_source": "registry/gguf_header"
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": true,
+        "thinking": true,
+        "vision": true,
+        "streaming": true
+      }
+    },
+    {
+      "catalog_id": "qwen3-30b-q4-k-m",
+      "revision": "ad815644918f0eaab341c12b67837cc6dd4562342cdaf118f83d5d554cb37226",
+      "provider": "ollama",
+      "artifact_id": "qwen3:30b",
+      "metadata": {
+        "size_bytes": 18556699314,
+        "context_length": 262144,
+        "parameter_size": "30.5B",
+        "family": "qwen3moe",
+        "format": "gguf",
+        "quantization": "Q4_K_M",
+        "architecture": "qwen3moe",
+        "attention": {
+          "layers": 48,
+          "kv_heads": 4,
+          "key_length": 128,
+          "value_length": 128
+        },
+        "fit_metadata_source": "ollama/api/show"
+      },
+      "capabilities": {
+        "chat": true,
+        "streaming": true,
+        "tools": true,
+        "thinking": true,
+        "vision": false
+      }
+    },
+    {
+      "catalog_id": "qwen3-14b-q4-k-m",
+      "revision": "bdbd181c33f2ed1b31c972991882db3cf4d192569092138a7d29e973cd9debe8",
+      "provider": "ollama",
+      "artifact_id": "qwen3:14b",
+      "metadata": {
+        "size_bytes": 9276198565,
+        "context_length": 40960,
+        "parameter_size": "14.8B",
+        "family": "qwen3",
+        "format": "gguf",
+        "quantization": "Q4_K_M",
+        "architecture": "qwen3",
+        "attention": {
+          "layers": 40,
+          "kv_heads": 8,
+          "key_length": 128,
+          "value_length": 128
+        },
+        "fit_metadata_source": "ollama/api/show"
+      },
+      "capabilities": {
+        "chat": true,
+        "streaming": true,
+        "tools": true,
+        "thinking": true,
+        "vision": false
+      }
+    },
+    {
+      "catalog_id": "phi4-mini-latest-q4-k-m",
+      "revision": "78fad5d182a7c33065e153a5f8ba210754207ba9d91973f57dffa7f487363753",
+      "provider": "ollama",
+      "artifact_id": "phi4-mini:latest",
+      "metadata": {
+        "size_bytes": 2491876774,
+        "context_length": 131072,
+        "parameter_size": "3.8B",
+        "family": "phi3",
+        "format": "gguf",
+        "quantization": "Q4_K_M",
+        "architecture": "phi3",
+        "attention": {
+          "layers": 32,
+          "kv_heads": 8,
+          "key_length": 128,
+          "value_length": 128
+        },
+        "fit_metadata_source": "registry/gguf_header"
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": true,
+        "thinking": null,
+        "vision": null,
+        "streaming": true
+      }
+    },
+    {
+      "catalog_id": "llama3.1-8b-q4-k-m",
+      "revision": "46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e",
+      "provider": "ollama",
+      "artifact_id": "llama3.1:8b",
+      "metadata": {
+        "size_bytes": 4920753328,
+        "context_length": 131072,
+        "parameter_size": "8.0B",
+        "family": "llama",
+        "format": "gguf",
+        "quantization": "Q4_K_M",
+        "architecture": "llama",
+        "attention": {
+          "layers": 32,
+          "kv_heads": 8,
+          "key_length": 128,
+          "value_length": 128
+        },
+        "fit_metadata_source": "registry/gguf_header"
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": true,
+        "thinking": null,
+        "vision": null,
+        "streaming": true
+      }
+    },
+    {
+      "catalog_id": "qwen3.5-9b-q4-k-m",
+      "revision": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+      "provider": "ollama",
+      "artifact_id": "qwen3.5:9b",
+      "metadata": {
+        "size_bytes": 6550825550,
+        "context_length": 262144,
+        "parameter_size": "9.0B",
+        "family": "qwen35",
+        "format": "gguf",
+        "quantization": "Q4_K_M",
+        "architecture": "qwen35",
+        "attention": {
+          "layers": 32,
+          "kv_heads": 4,
+          "key_length": 256,
+          "value_length": 256,
+          "full_attention_layers": 8
+        },
+        "fit_metadata_source": "registry/gguf_header"
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": true,
+        "thinking": true,
+        "vision": true,
+        "streaming": true
+      }
+    },
+    {
+      "catalog_id": "gemma4-12b-q4-k-m",
+      "revision": "6114515d63c17436a7c0417d82820ac65ad643e2806c5a3c89cb62846436ed0b",
+      "provider": "ollama",
+      "artifact_id": "gemma4:12b",
+      "metadata": {
+        "size_bytes": 8021618941,
+        "context_length": 262144,
+        "parameter_size": "11.9B",
+        "family": "gemma4",
+        "format": "gguf",
+        "quantization": "Q4_K_M",
+        "architecture": "gemma4",
+        "attention": {
+          "layers": 48,
+          "kv_heads": 1,
+          "key_length": 512,
+          "value_length": 512,
+          "full_attention_layers": 8,
+          "window_cache_elements": 167772160
+        },
+        "fit_metadata_source": "registry/gguf_header"
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": null,
+        "thinking": null,
+        "vision": true,
+        "streaming": true
+      }
+    },
+    {
+      "catalog_id": "gpt-oss-20b-mxfp4",
+      "revision": "f38aa0c53da5f8c49d08c43a99df24ff53167fe68e24664a7777288e7656fdfe",
+      "provider": "ollama",
+      "artifact_id": "gpt-oss:20b",
+      "metadata": {
+        "size_bytes": 13793441566,
+        "context_length": 131072,
+        "parameter_size": "20.9B",
+        "family": "gpt-oss",
+        "format": "gguf",
+        "quantization": "MXFP4",
+        "architecture": "gpt-oss",
+        "attention": {
+          "layers": 24,
+          "kv_heads": 8,
+          "key_length": 64,
+          "value_length": 64
+        },
+        "fit_metadata_source": "registry/gguf_header"
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": true,
+        "thinking": true,
+        "vision": null,
+        "streaming": true
+      }
+    },
+    {
+      "catalog_id": "qwen3.6-27b-q4-k-m",
+      "revision": "bcbdbd4bcf86f2c4a56cd1698fb31f9434f7dd99752f71b636c750aaa67a49a5",
+      "provider": "ollama",
+      "artifact_id": "qwen3.6:27b",
+      "metadata": {
+        "size_bytes": 17769076933,
+        "context_length": 262144,
+        "parameter_size": "27.3B",
+        "family": "qwen35",
+        "format": "gguf",
+        "quantization": "Q4_K_M",
+        "architecture": "qwen35",
+        "attention": {
+          "layers": 65,
+          "kv_heads": 4,
+          "key_length": 256,
+          "value_length": 256,
+          "full_attention_layers": 16
+        },
+        "fit_metadata_source": "registry/gguf_header"
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": true,
+        "thinking": true,
+        "vision": true,
+        "streaming": true
+      }
+    },
+    {
+      "catalog_id": "gemma4-26b-q4-k-m",
+      "revision": "001e5dafc3c77684c2307ebc6ab8e336e10c9b18eca52acf547d72fc83c3ca8c",
+      "provider": "ollama",
+      "artifact_id": "gemma4:26b",
+      "metadata": {
+        "size_bytes": 18731025629,
+        "context_length": 262144,
+        "parameter_size": "25.2B",
+        "family": "gemma4",
+        "format": "gguf",
+        "quantization": "Q4_K_M",
+        "architecture": "gemma4",
+        "attention": {
+          "layers": 30,
+          "kv_heads": 2,
+          "key_length": 512,
+          "value_length": 512,
+          "full_attention_layers": 5,
+          "window_cache_elements": 104857600
+        },
+        "fit_metadata_source": "registry/gguf_header"
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": null,
+        "thinking": null,
+        "vision": true,
+        "streaming": true
+      }
+    },
+    {
+      "catalog_id": "qwen3-coder-30b-q4-k-m",
+      "revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+      "provider": "ollama",
+      "artifact_id": "qwen3-coder:30b",
+      "metadata": {
+        "size_bytes": 18556700761,
+        "context_length": 262144,
+        "parameter_size": "30.5B",
+        "family": "qwen3moe",
+        "format": "gguf",
+        "quantization": "Q4_K_M",
+        "architecture": "qwen3moe",
+        "attention": {
+          "layers": 48,
+          "kv_heads": 4,
+          "key_length": 128,
+          "value_length": 128
+        },
+        "fit_metadata_source": "registry/gguf_header"
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": null,
+        "thinking": null,
+        "vision": null,
+        "streaming": true
+      }
+    },
+    {
+      "catalog_id": "qwen3.8-27b-q4-k-m",
+      "revision": "25b843619e944cd0ae6069f94ff4e5e26a16e109ccbc0a66a0f05979ed70098e",
+      "provider": "ollama",
+      "artifact_id": "qwen3.8:27b-q4_K_M",
+      "metadata": {
+        "size_bytes": 17741872132,
+        "context_length": 262144,
+        "parameter_size": "27.3B",
+        "family": "qwen35",
+        "format": "gguf",
+        "quantization": "Q4_K_M",
+        "architecture": "qwen35",
+        "attention": {
+          "layers": 65,
+          "kv_heads": 4,
+          "key_length": 256,
+          "value_length": 256,
+          "full_attention_layers": 16
+        },
+        "fit_metadata_source": "registry/gguf_header"
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": true,
+        "thinking": true,
+        "vision": true,
+        "streaming": true
+      }
+    },
+    {
+      "catalog_id": "qwen3.6-35b-q4-k-m",
+      "revision": "a7eb95c53bcf96b4bdd008d0fab4a5dac88047d9c1a7a9ab88ed453423fbd87c",
+      "provider": "ollama",
+      "artifact_id": "qwen3.6:35b",
+      "metadata": {
+        "size_bytes": 22621314381,
+        "context_length": 262144,
+        "parameter_size": "35.5B",
+        "family": "qwen35moe",
+        "format": "gguf",
+        "quantization": "Q4_K_M",
+        "architecture": "qwen35moe",
+        "attention": {
+          "layers": 41,
+          "kv_heads": 2,
+          "key_length": 256,
+          "value_length": 256,
+          "full_attention_layers": 10
+        },
+        "fit_metadata_source": "registry/gguf_header"
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": true,
+        "thinking": true,
+        "vision": true,
+        "streaming": true
+      }
+    },
+    {
+      "catalog_id": "qwen3-8b-q4-k-m",
+      "revision": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41",
+      "provider": "ollama",
+      "artifact_id": "qwen3:8b",
+      "metadata": {
+        "size_bytes": 5225388164,
+        "context_length": 40960,
+        "parameter_size": "8.2B",
+        "family": "qwen3",
+        "format": "gguf",
+        "quantization": "Q4_K_M",
+        "architecture": "qwen3",
+        "attention": {
+          "layers": 36,
+          "kv_heads": 8,
+          "key_length": 128,
+          "value_length": 128
+        },
+        "fit_metadata_source": "ollama/api/show"
+      },
+      "capabilities": {
+        "chat": true,
+        "streaming": true,
+        "tools": true,
+        "thinking": true,
+        "vision": false
+      }
+    },
+    {
+      "catalog_id": "llama3.2-1b-q8-0",
+      "revision": "baf6a787fdffd633537aa2eb51cfd54cb93ff08e28040095462bb63daf552878",
+      "provider": "ollama",
+      "artifact_id": "llama3.2:1b",
+      "metadata": {
+        "size_bytes": 1321098329,
+        "context_length": 131072,
+        "parameter_size": "1.2B",
+        "family": "llama",
+        "format": "gguf",
+        "quantization": "Q8_0",
+        "architecture": "llama",
+        "attention": {
+          "layers": 16,
+          "kv_heads": 8,
+          "key_length": 64,
+          "value_length": 64
+        },
+        "fit_metadata_source": "registry/gguf_header"
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": true,
+        "thinking": null,
+        "vision": null,
+        "streaming": true
+      }
+    },
+    {
+      "catalog_id": "llama3.2-3b-q4-k-m",
+      "revision": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+      "provider": "ollama",
+      "artifact_id": "llama3.2:3b",
+      "metadata": {
+        "size_bytes": 2019393189,
+        "context_length": 131072,
+        "parameter_size": "3.2B",
+        "family": "llama",
+        "format": "gguf",
+        "quantization": "Q4_K_M",
+        "architecture": "llama",
+        "attention": {
+          "layers": 28,
+          "kv_heads": 8,
+          "key_length": 128,
+          "value_length": 128
+        },
+        "fit_metadata_source": "registry/gguf_header"
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": true,
+        "thinking": null,
+        "vision": null,
+        "streaming": true
+      }
+    }
+  ]
+}

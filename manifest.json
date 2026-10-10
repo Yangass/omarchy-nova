@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.yangass.nova",
+  "name": "NOVA",
+  "version": "0.13.0",
+  "author": "Konstantin Tarasevic",
+  "license": "MIT",
+  "description": "Run AI models on your own computer without the terminal: NOVA checks your hardware, shows which local models fit, installs the one you pick with your approval, and gives you a private chat in the top bar.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "activation": "on-demand",
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "NOVA",
+    "description": "Local AI chat, models that fit your PC, approved installs, live hardware use.",
+    "category": "System",
+    "aliases": [
+      "nova",
+      "diagnostics"
+    ],
+    "allowMultiple": false,
+    "defaultSection": "center",
+    "defaults": {
+      "refreshSec": 10,
+      "reducedMotion": false
+    },
+    "schema": [
+      {
+        "key": "refreshSec",
+        "type": "integer",
+        "label": "Refresh interval (seconds)",
+        "min": 5,
+        "max": 60,
+        "step": 1,
+        "defaultValue": 10
+      },
+      {
+        "key": "reducedMotion",
+        "type": "boolean",
+        "label": "Reduce activity motion",
+        "description": "Keep the pixel wave still; activity labels and colours still update.",
+        "defaultValue": false
+      }
+    ]
+  }
+}

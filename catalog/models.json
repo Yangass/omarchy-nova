@@ -1,0 +1,967 @@
+{
+  "schema_version": 1,
+  "catalog_revision": "2026-10-07.minver",
+  "models": [
+    {
+      "catalog_id": "qwen3.5-35b-q4-k-m",
+      "display_name": "Qwen 3.5 35B (Q4_K_M)",
+      "family": "qwen35moe",
+      "release_label": null,
+      "source": {
+        "kind": "upstream_metadata",
+        "provider": "ollama",
+        "upstream_id": "qwen3.5:35b",
+        "reference": "registry.ollama.ai/library/qwen3.5:35b",
+        "revision_digest": "72aac7c28be8ff9b81c2a270eb489c88e6d822a76ec0cb7bf34d965768848567"
+      },
+      "properties": {
+        "architecture": "qwen35moe",
+        "parameter_count": 34660610688,
+        "quantizations": [
+          "Q4_K_M"
+        ],
+        "weight_size_bytes": 22069592181,
+        "native_context": 262144
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": true,
+        "thinking": true,
+        "vision": true,
+        "coding": null,
+        "instruction_following": null
+      },
+      "task_tags": [
+        "general",
+        "reasoning",
+        "vision"
+      ],
+      "acquisition": {
+        "provider": "ollama",
+        "artifact_id": "qwen3.5:35b",
+        "exact_tag": "35b",
+        "expected_revision": "72aac7c28be8ff9b81c2a270eb489c88e6d822a76ec0cb7bf34d965768848567",
+        "expected_size_bytes": 22069592181,
+        "source": "ollama_registry",
+        "provenance": {
+          "method": "registry_manifest_probe",
+          "observed_at": "2026-10-10T10:38:42Z",
+          "notes": "Manifest sha256 and summed layer sizes from the public registry; an identity pin, not a download measurement."
+        },
+        "minimum_provider_version": "0.30.0"
+      },
+      "metadata": {
+        "release_date": null,
+        "license": "Apache License",
+        "checked_at": "2026-10-10T10:38:42Z",
+        "provenance": {
+          "method": "registry_probe",
+          "references": [
+            "registry.ollama.ai/v2/library/qwen3.5/manifests/35b"
+          ],
+          "notes": "Registry probe: manifest identity plus GGUF header metadata read without downloading. Capabilities are template/parser/projector declarations; unknown stays null; fit is not quality. Requires Ollama >= 0.30.0. Parser: qwen3.5. Re-pinned 2026-10-10: Ollama re-published the tag (was manifest 3460ffeede54)."
+        }
+      }
+    },
+    {
+      "catalog_id": "qwen3-30b-q4-k-m",
+      "display_name": "Qwen 3 30B (Q4_K_M)",
+      "family": "qwen3moe",
+      "release_label": "2507",
+      "source": {
+        "kind": "local_registry_snapshot",
+        "provider": "ollama",
+        "upstream_id": "qwen3:30b",
+        "reference": "registry.ollama.ai/library/qwen3:30b",
+        "revision_digest": "ad815644918f0eaab341c12b67837cc6dd4562342cdaf118f83d5d554cb37226"
+      },
+      "properties": {
+        "architecture": "qwen3moe",
+        "parameter_count": 30532122624,
+        "quantizations": [
+          "Q4_K_M"
+        ],
+        "weight_size_bytes": 18556699314,
+        "native_context": 262144
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": true,
+        "thinking": true,
+        "vision": null,
+        "coding": null,
+        "instruction_following": null
+      },
+      "task_tags": [
+        "general",
+        "reasoning"
+      ],
+      "acquisition": {
+        "provider": "ollama",
+        "artifact_id": "qwen3:30b",
+        "exact_tag": "30b",
+        "expected_revision": "ad815644918f0eaab341c12b67837cc6dd4562342cdaf118f83d5d554cb37226",
+        "expected_size_bytes": 18556699314,
+        "source": "ollama_registry",
+        "provenance": {
+          "method": "transcribed_local_manifest_and_catalog_snapshot",
+          "observed_at": "2026-09-08T12:21:36Z",
+          "notes": "Exact local manifest digest and artifact byte size; this is an acquisition identity pin, not a download measurement."
+        }
+      },
+      "metadata": {
+        "release_date": null,
+        "license": null,
+        "checked_at": "2026-10-10T12:27:53Z",
+        "provenance": {
+          "method": "manual_local_seed",
+          "references": [
+            "ollama /api/tags",
+            "ollama /api/show",
+            "local Ollama manifest"
+          ],
+          "notes": "Snapshot of one locally installed artifact. Presence in the catalog does not imply installed/active state. Capabilities are provider declarations, not quality or reliability tests. Absent capabilities and unverified release/license fields remain null. Quantizations lists only locally observed options; weight size is artifact bytes, not runtime memory. Re-verified 2026-10-10: registry manifest unchanged and a fresh registry probe matched every recorded property and capability."
+        }
+      }
+    },
+    {
+      "catalog_id": "qwen3-14b-q4-k-m",
+      "display_name": "Qwen 3 14B (Q4_K_M)",
+      "family": "qwen3",
+      "release_label": null,
+      "source": {
+        "kind": "local_registry_snapshot",
+        "provider": "ollama",
+        "upstream_id": "qwen3:14b",
+        "reference": "registry.ollama.ai/library/qwen3:14b",
+        "revision_digest": "bdbd181c33f2ed1b31c972991882db3cf4d192569092138a7d29e973cd9debe8"
+      },
+      "properties": {
+        "architecture": "qwen3",
+        "parameter_count": 14768307200,
+        "quantizations": [
+          "Q4_K_M"
+        ],
+        "weight_size_bytes": 9276198565,
+        "native_context": 40960
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": true,
+        "thinking": true,
+        "vision": null,
+        "coding": null,
+        "instruction_following": null
+      },
+      "task_tags": [
+        "general",
+        "reasoning"
+      ],
+      "acquisition": {
+        "provider": "ollama",
+        "artifact_id": "qwen3:14b",
+        "exact_tag": "14b",
+        "expected_revision": "bdbd181c33f2ed1b31c972991882db3cf4d192569092138a7d29e973cd9debe8",
+        "expected_size_bytes": 9276198565,
+        "source": "ollama_registry",
+        "provenance": {
+          "method": "transcribed_local_manifest_and_catalog_snapshot",
+          "observed_at": "2026-09-08T12:21:36Z",
+          "notes": "Exact local manifest digest and artifact byte size; this is an acquisition identity pin, not a download measurement."
+        }
+      },
+      "metadata": {
+        "release_date": null,
+        "license": null,
+        "checked_at": "2026-10-10T12:27:53Z",
+        "provenance": {
+          "method": "manual_local_seed",
+          "references": [
+            "ollama /api/tags",
+            "ollama /api/show",
+            "local Ollama manifest"
+          ],
+          "notes": "Snapshot of one locally installed artifact. Presence in the catalog does not imply installed/active state. Capabilities are provider declarations, not quality or reliability tests. Absent capabilities and unverified release/license fields remain null. Quantizations lists only locally observed options; weight size is artifact bytes, not runtime memory. Re-verified 2026-10-10: registry manifest unchanged and a fresh registry probe matched every recorded property and capability."
+        }
+      }
+    },
+    {
+      "catalog_id": "phi4-mini-latest-q4-k-m",
+      "display_name": "Phi-4 Mini 3.8B (Q4_K_M)",
+      "family": "phi3",
+      "release_label": null,
+      "source": {
+        "kind": "upstream_metadata",
+        "provider": "ollama",
+        "upstream_id": "phi4-mini:latest",
+        "reference": "registry.ollama.ai/library/phi4-mini:latest",
+        "revision_digest": "78fad5d182a7c33065e153a5f8ba210754207ba9d91973f57dffa7f487363753"
+      },
+      "properties": {
+        "architecture": "phi3",
+        "parameter_count": 3836021856,
+        "quantizations": [
+          "Q4_K_M"
+        ],
+        "weight_size_bytes": 2491876774,
+        "native_context": 131072
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": true,
+        "thinking": null,
+        "vision": null,
+        "coding": null,
+        "instruction_following": null
+      },
+      "task_tags": [
+        "general"
+      ],
+      "acquisition": {
+        "provider": "ollama",
+        "artifact_id": "phi4-mini:latest",
+        "exact_tag": "latest",
+        "expected_revision": "78fad5d182a7c33065e153a5f8ba210754207ba9d91973f57dffa7f487363753",
+        "expected_size_bytes": 2491876774,
+        "source": "ollama_registry",
+        "provenance": {
+          "method": "registry_manifest_probe",
+          "observed_at": "2026-10-04T11:48:35Z",
+          "notes": "Manifest sha256 and summed layer sizes from the public registry; an identity pin, not a download measurement."
+        }
+      },
+      "metadata": {
+        "release_date": null,
+        "license": "Microsoft.",
+        "checked_at": "2026-10-04T11:48:35Z",
+        "provenance": {
+          "method": "registry_probe+curated_task_tags",
+          "references": [
+            "registry.ollama.ai/v2/library/phi4-mini/manifests/latest",
+            "llmconfigurator.com/en/guides/best-local-llm-by-vram (July 2026)"
+          ],
+          "notes": "Registry probe: manifest identity plus GGUF header metadata read without downloading. Capabilities are template/parser/projector declarations; unknown stays null; fit is not quality. Task tags are descriptive, curated from the cited guides; not NOVA benchmarks."
+        }
+      }
+    },
+    {
+      "catalog_id": "llama3.1-8b-q4-k-m",
+      "display_name": "Llama 3.1 8B (Q4_K_M)",
+      "family": "llama",
+      "release_label": null,
+      "source": {
+        "kind": "upstream_metadata",
+        "provider": "ollama",
+        "upstream_id": "llama3.1:8b",
+        "reference": "registry.ollama.ai/library/llama3.1:8b",
+        "revision_digest": "46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e"
+      },
+      "properties": {
+        "architecture": "llama",
+        "parameter_count": 8030261312,
+        "quantizations": [
+          "Q4_K_M"
+        ],
+        "weight_size_bytes": 4920753328,
+        "native_context": 131072
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": true,
+        "thinking": null,
+        "vision": null,
+        "coding": null,
+        "instruction_following": null
+      },
+      "task_tags": [
+        "general"
+      ],
+      "acquisition": {
+        "provider": "ollama",
+        "artifact_id": "llama3.1:8b",
+        "exact_tag": "8b",
+        "expected_revision": "46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e",
+        "expected_size_bytes": 4920753328,
+        "source": "ollama_registry",
+        "provenance": {
+          "method": "registry_manifest_probe",
+          "observed_at": "2026-10-04T11:48:37Z",
+          "notes": "Manifest sha256 and summed layer sizes from the public registry; an identity pin, not a download measurement."
+        }
+      },
+      "metadata": {
+        "release_date": null,
+        "license": "LLAMA 3.1 COMMUNITY LICENSE AGREEMENT",
+        "checked_at": "2026-10-04T11:48:37Z",
+        "provenance": {
+          "method": "registry_probe+curated_task_tags",
+          "references": [
+            "registry.ollama.ai/v2/library/llama3.1/manifests/8b",
+            "llmconfigurator.com/en/guides/best-local-llm-by-vram (July 2026)",
+            "localaimaster.com/blog/ollama-model-ram-vram-table (updated Sept 2026)"
+          ],
+          "notes": "Registry probe: manifest identity plus GGUF header metadata read without downloading. Capabilities are template/parser/projector declarations; unknown stays null; fit is not quality. Task tags are descriptive, curated from the cited guides; not NOVA benchmarks."
+        }
+      }
+    },
+    {
+      "catalog_id": "qwen3.5-9b-q4-k-m",
+      "display_name": "Qwen 3.5 9B (Q4_K_M)",
+      "family": "qwen35",
+      "release_label": null,
+      "source": {
+        "kind": "upstream_metadata",
+        "provider": "ollama",
+        "upstream_id": "qwen3.5:9b",
+        "reference": "registry.ollama.ai/library/qwen3.5:9b",
+        "revision_digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90"
+      },
+      "properties": {
+        "architecture": "qwen35",
+        "parameter_count": 8953803264,
+        "quantizations": [
+          "Q4_K_M"
+        ],
+        "weight_size_bytes": 6550825550,
+        "native_context": 262144
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": true,
+        "thinking": true,
+        "vision": true,
+        "coding": null,
+        "instruction_following": null
+      },
+      "task_tags": [
+        "reasoning",
+        "vision"
+      ],
+      "acquisition": {
+        "provider": "ollama",
+        "artifact_id": "qwen3.5:9b",
+        "exact_tag": "9b",
+        "expected_revision": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+        "expected_size_bytes": 6550825550,
+        "source": "ollama_registry",
+        "provenance": {
+          "method": "registry_manifest_probe",
+          "observed_at": "2026-10-10T10:38:48Z",
+          "notes": "Manifest sha256 and summed layer sizes from the public registry; an identity pin, not a download measurement."
+        },
+        "minimum_provider_version": "0.30.0"
+      },
+      "metadata": {
+        "release_date": null,
+        "license": "Apache License",
+        "checked_at": "2026-10-10T10:38:48Z",
+        "provenance": {
+          "method": "registry_probe",
+          "references": [
+            "registry.ollama.ai/v2/library/qwen3.5/manifests/9b"
+          ],
+          "notes": "Registry probe: manifest identity plus GGUF header metadata read without downloading. Capabilities are template/parser/projector declarations; unknown stays null; fit is not quality. Requires Ollama >= 0.30.0. Parser: qwen3.5. Re-pinned 2026-10-10: Ollama re-published the tag (was manifest 6488c96fa5fa)."
+        }
+      }
+    },
+    {
+      "catalog_id": "gemma4-12b-q4-k-m",
+      "display_name": "Gemma 4 12B (Q4_K_M)",
+      "family": "gemma4",
+      "release_label": null,
+      "source": {
+        "kind": "upstream_metadata",
+        "provider": "ollama",
+        "upstream_id": "gemma4:12b",
+        "reference": "registry.ollama.ai/library/gemma4:12b",
+        "revision_digest": "6114515d63c17436a7c0417d82820ac65ad643e2806c5a3c89cb62846436ed0b"
+      },
+      "properties": {
+        "architecture": "gemma4",
+        "parameter_count": 11907350576,
+        "quantizations": [
+          "Q4_K_M"
+        ],
+        "weight_size_bytes": 8021618941,
+        "native_context": 262144
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": null,
+        "thinking": null,
+        "vision": true,
+        "coding": null,
+        "instruction_following": null
+      },
+      "task_tags": [
+        "general",
+        "vision"
+      ],
+      "acquisition": {
+        "provider": "ollama",
+        "artifact_id": "gemma4:12b",
+        "exact_tag": "12b",
+        "expected_revision": "6114515d63c17436a7c0417d82820ac65ad643e2806c5a3c89cb62846436ed0b",
+        "expected_size_bytes": 8021618941,
+        "source": "ollama_registry",
+        "minimum_provider_version": "0.30.9",
+        "provenance": {
+          "method": "registry_manifest_probe",
+          "observed_at": "2026-10-04T11:48:43Z",
+          "notes": "Manifest sha256 and summed layer sizes from the public registry; an identity pin, not a download measurement."
+        }
+      },
+      "metadata": {
+        "release_date": null,
+        "license": "Apache License",
+        "checked_at": "2026-10-04T11:48:43Z",
+        "provenance": {
+          "method": "registry_probe+curated_task_tags",
+          "references": [
+            "registry.ollama.ai/v2/library/gemma4/manifests/12b",
+            "whatllm.org/best-ollama-models (July 2026)"
+          ],
+          "notes": "Registry probe: manifest identity plus GGUF header metadata read without downloading. Capabilities are template/parser/projector declarations; unknown stays null; fit is not quality. Requires Ollama >= 0.30.9. Parser: gemma4. Task tags are descriptive, curated from the cited guides; not NOVA benchmarks."
+        }
+      }
+    },
+    {
+      "catalog_id": "gpt-oss-20b-mxfp4",
+      "display_name": "gpt-oss 20B (MXFP4)",
+      "family": "gptoss",
+      "release_label": null,
+      "source": {
+        "kind": "upstream_metadata",
+        "provider": "ollama",
+        "upstream_id": "gpt-oss:20b",
+        "reference": "registry.ollama.ai/library/gpt-oss:20b",
+        "revision_digest": "f38aa0c53da5f8c49d08c43a99df24ff53167fe68e24664a7777288e7656fdfe"
+      },
+      "properties": {
+        "architecture": "gpt-oss",
+        "parameter_count": 20914757184,
+        "quantizations": [
+          "MXFP4"
+        ],
+        "weight_size_bytes": 13793441566,
+        "native_context": 131072
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": true,
+        "thinking": true,
+        "vision": null,
+        "coding": null,
+        "instruction_following": null
+      },
+      "task_tags": [
+        "reasoning"
+      ],
+      "acquisition": {
+        "provider": "ollama",
+        "artifact_id": "gpt-oss:20b",
+        "exact_tag": "20b",
+        "expected_revision": "f38aa0c53da5f8c49d08c43a99df24ff53167fe68e24664a7777288e7656fdfe",
+        "expected_size_bytes": 13793441566,
+        "source": "ollama_registry",
+        "provenance": {
+          "method": "registry_manifest_probe",
+          "observed_at": "2026-10-10T10:38:52Z",
+          "notes": "Manifest sha256 and summed layer sizes from the public registry; an identity pin, not a download measurement."
+        },
+        "minimum_provider_version": "0.30.0"
+      },
+      "metadata": {
+        "release_date": null,
+        "license": "Apache License",
+        "checked_at": "2026-10-10T10:38:52Z",
+        "provenance": {
+          "method": "registry_probe",
+          "references": [
+            "registry.ollama.ai/v2/library/gpt-oss/manifests/20b"
+          ],
+          "notes": "Registry probe: manifest identity plus GGUF header metadata read without downloading. Capabilities are template/parser/projector declarations; unknown stays null; fit is not quality. Requires Ollama >= 0.30.0. Re-pinned 2026-10-10: Ollama re-published the tag (was manifest 17052f91a42e)."
+        }
+      }
+    },
+    {
+      "catalog_id": "qwen3.6-27b-q4-k-m",
+      "display_name": "Qwen 3.6 27B (Q4_K_M)",
+      "family": "qwen35",
+      "release_label": null,
+      "source": {
+        "kind": "upstream_metadata",
+        "provider": "ollama",
+        "upstream_id": "qwen3.6:27b",
+        "reference": "registry.ollama.ai/library/qwen3.6:27b",
+        "revision_digest": "bcbdbd4bcf86f2c4a56cd1698fb31f9434f7dd99752f71b636c750aaa67a49a5"
+      },
+      "properties": {
+        "architecture": "qwen35",
+        "parameter_count": 27320697856,
+        "quantizations": [
+          "Q4_K_M"
+        ],
+        "weight_size_bytes": 17769076933,
+        "native_context": 262144
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": true,
+        "thinking": true,
+        "vision": true,
+        "coding": null,
+        "instruction_following": null
+      },
+      "task_tags": [
+        "general",
+        "reasoning",
+        "vision"
+      ],
+      "acquisition": {
+        "provider": "ollama",
+        "artifact_id": "qwen3.6:27b",
+        "exact_tag": "27b",
+        "expected_revision": "bcbdbd4bcf86f2c4a56cd1698fb31f9434f7dd99752f71b636c750aaa67a49a5",
+        "expected_size_bytes": 17769076933,
+        "source": "ollama_registry",
+        "minimum_provider_version": "0.30.0",
+        "provenance": {
+          "method": "registry_manifest_probe",
+          "observed_at": "2026-10-04T11:48:50Z",
+          "notes": "Manifest sha256 and summed layer sizes from the public registry; an identity pin, not a download measurement."
+        }
+      },
+      "metadata": {
+        "release_date": null,
+        "license": "Apache License",
+        "checked_at": "2026-10-04T11:48:50Z",
+        "provenance": {
+          "method": "registry_probe+curated_task_tags",
+          "references": [
+            "registry.ollama.ai/v2/library/qwen3.6/manifests/27b",
+            "whatllm.org/best-ollama-models (July 2026)"
+          ],
+          "notes": "Registry probe: manifest identity plus GGUF header metadata read without downloading. Capabilities are template/parser/projector declarations; unknown stays null; fit is not quality. Requires Ollama >= 0.30.0. Parser: qwen3.5. Task tags are descriptive, curated from the cited guides; not NOVA benchmarks."
+        }
+      }
+    },
+    {
+      "catalog_id": "gemma4-26b-q4-k-m",
+      "display_name": "Gemma 4 26B (Q4_K_M)",
+      "family": "gemma4",
+      "release_label": null,
+      "source": {
+        "kind": "upstream_metadata",
+        "provider": "ollama",
+        "upstream_id": "gemma4:26b",
+        "reference": "registry.ollama.ai/library/gemma4:26b",
+        "revision_digest": "001e5dafc3c77684c2307ebc6ab8e336e10c9b18eca52acf547d72fc83c3ca8c"
+      },
+      "properties": {
+        "architecture": "gemma4",
+        "parameter_count": 25233142046,
+        "quantizations": [
+          "Q4_K_M"
+        ],
+        "weight_size_bytes": 18731025629,
+        "native_context": 262144
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": null,
+        "thinking": null,
+        "vision": true,
+        "coding": null,
+        "instruction_following": null
+      },
+      "task_tags": [
+        "general",
+        "vision"
+      ],
+      "acquisition": {
+        "provider": "ollama",
+        "artifact_id": "gemma4:26b",
+        "exact_tag": "26b",
+        "expected_revision": "001e5dafc3c77684c2307ebc6ab8e336e10c9b18eca52acf547d72fc83c3ca8c",
+        "expected_size_bytes": 18731025629,
+        "source": "ollama_registry",
+        "minimum_provider_version": "0.30.9",
+        "provenance": {
+          "method": "registry_manifest_probe",
+          "observed_at": "2026-10-04T11:48:53Z",
+          "notes": "Manifest sha256 and summed layer sizes from the public registry; an identity pin, not a download measurement."
+        }
+      },
+      "metadata": {
+        "release_date": null,
+        "license": "Apache License",
+        "checked_at": "2026-10-04T11:48:53Z",
+        "provenance": {
+          "method": "registry_probe+curated_task_tags",
+          "references": [
+            "registry.ollama.ai/v2/library/gemma4/manifests/26b",
+            "whatllm.org/best-ollama-models (July 2026)"
+          ],
+          "notes": "Registry probe: manifest identity plus GGUF header metadata read without downloading. Capabilities are template/parser/projector declarations; unknown stays null; fit is not quality. Requires Ollama >= 0.30.9. Parser: gemma4. Task tags are descriptive, curated from the cited guides; not NOVA benchmarks."
+        }
+      }
+    },
+    {
+      "catalog_id": "qwen3-coder-30b-q4-k-m",
+      "display_name": "Qwen3-Coder 30B-A3B (Q4_K_M)",
+      "family": "qwen3moe",
+      "release_label": null,
+      "source": {
+        "kind": "upstream_metadata",
+        "provider": "ollama",
+        "upstream_id": "qwen3-coder:30b",
+        "reference": "registry.ollama.ai/library/qwen3-coder:30b",
+        "revision_digest": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca"
+      },
+      "properties": {
+        "architecture": "qwen3moe",
+        "parameter_count": 30532122624,
+        "quantizations": [
+          "Q4_K_M"
+        ],
+        "weight_size_bytes": 18556700761,
+        "native_context": 262144
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": null,
+        "thinking": null,
+        "vision": null,
+        "coding": null,
+        "instruction_following": null
+      },
+      "task_tags": [
+        "coding"
+      ],
+      "acquisition": {
+        "provider": "ollama",
+        "artifact_id": "qwen3-coder:30b",
+        "exact_tag": "30b",
+        "expected_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+        "expected_size_bytes": 18556700761,
+        "source": "ollama_registry",
+        "provenance": {
+          "method": "registry_manifest_probe",
+          "observed_at": "2026-10-04T11:48:56Z",
+          "notes": "Manifest sha256 and summed layer sizes from the public registry; an identity pin, not a download measurement."
+        }
+      },
+      "metadata": {
+        "release_date": null,
+        "license": "Apache License",
+        "checked_at": "2026-10-04T11:48:56Z",
+        "provenance": {
+          "method": "registry_probe+curated_task_tags",
+          "references": [
+            "registry.ollama.ai/v2/library/qwen3-coder/manifests/30b",
+            "whatllm.org/best-ollama-models (July 2026)",
+            "localaimaster.com/blog/ollama-model-ram-vram-table (updated Sept 2026)"
+          ],
+          "notes": "Registry probe: manifest identity plus GGUF header metadata read without downloading. Capabilities are template/parser/projector declarations; unknown stays null; fit is not quality. Parser: qwen3-coder. Task tags are descriptive, curated from the cited guides; not NOVA benchmarks."
+        }
+      }
+    },
+    {
+      "catalog_id": "qwen3.8-27b-q4-k-m",
+      "display_name": "Qwen 3.8 27B (Q4_K_M)",
+      "family": "qwen35",
+      "release_label": null,
+      "source": {
+        "kind": "upstream_metadata",
+        "provider": "ollama",
+        "upstream_id": "qwen3.8:27b-q4_K_M",
+        "reference": "registry.ollama.ai/library/qwen3.8:27b-q4_K_M",
+        "revision_digest": "25b843619e944cd0ae6069f94ff4e5e26a16e109ccbc0a66a0f05979ed70098e"
+      },
+      "properties": {
+        "architecture": "qwen35",
+        "parameter_count": 27320697856,
+        "quantizations": [
+          "Q4_K_M"
+        ],
+        "weight_size_bytes": 17741872132,
+        "native_context": 262144
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": true,
+        "thinking": true,
+        "vision": true,
+        "coding": null,
+        "instruction_following": null
+      },
+      "task_tags": [
+        "reasoning",
+        "vision"
+      ],
+      "acquisition": {
+        "provider": "ollama",
+        "artifact_id": "qwen3.8:27b-q4_K_M",
+        "exact_tag": "27b-q4_K_M",
+        "expected_revision": "25b843619e944cd0ae6069f94ff4e5e26a16e109ccbc0a66a0f05979ed70098e",
+        "expected_size_bytes": 17741872132,
+        "source": "ollama_registry",
+        "minimum_provider_version": "0.32.12",
+        "provenance": {
+          "method": "registry_manifest_probe",
+          "observed_at": "2026-10-04T11:48:58Z",
+          "notes": "Manifest sha256 and summed layer sizes from the public registry; an identity pin, not a download measurement."
+        }
+      },
+      "metadata": {
+        "release_date": null,
+        "license": "Apache License",
+        "checked_at": "2026-10-04T11:48:58Z",
+        "provenance": {
+          "method": "registry_probe",
+          "references": [
+            "registry.ollama.ai/v2/library/qwen3.8/manifests/27b-q4_K_M"
+          ],
+          "notes": "Registry probe: manifest identity plus GGUF header metadata read without downloading. Capabilities are template/parser/projector declarations; unknown stays null; fit is not quality. Requires Ollama >= 0.32.12. Parser: qwen3.5."
+        }
+      }
+    },
+    {
+      "catalog_id": "qwen3.6-35b-q4-k-m",
+      "display_name": "Qwen 3.6 35B-A3B (Q4_K_M)",
+      "family": "qwen35moe",
+      "release_label": null,
+      "source": {
+        "kind": "upstream_metadata",
+        "provider": "ollama",
+        "upstream_id": "qwen3.6:35b",
+        "reference": "registry.ollama.ai/library/qwen3.6:35b",
+        "revision_digest": "a7eb95c53bcf96b4bdd008d0fab4a5dac88047d9c1a7a9ab88ed453423fbd87c"
+      },
+      "properties": {
+        "architecture": "qwen35moe",
+        "parameter_count": 35505251456,
+        "quantizations": [
+          "Q4_K_M"
+        ],
+        "weight_size_bytes": 22621314381,
+        "native_context": 262144
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": true,
+        "thinking": true,
+        "vision": true,
+        "coding": null,
+        "instruction_following": null
+      },
+      "task_tags": [
+        "reasoning",
+        "vision"
+      ],
+      "acquisition": {
+        "provider": "ollama",
+        "artifact_id": "qwen3.6:35b",
+        "exact_tag": "35b",
+        "expected_revision": "a7eb95c53bcf96b4bdd008d0fab4a5dac88047d9c1a7a9ab88ed453423fbd87c",
+        "expected_size_bytes": 22621314381,
+        "source": "ollama_registry",
+        "minimum_provider_version": "0.30.0",
+        "provenance": {
+          "method": "registry_manifest_probe",
+          "observed_at": "2026-10-04T11:49:01Z",
+          "notes": "Manifest sha256 and summed layer sizes from the public registry; an identity pin, not a download measurement."
+        }
+      },
+      "metadata": {
+        "release_date": null,
+        "license": "Apache License",
+        "checked_at": "2026-10-04T11:49:01Z",
+        "provenance": {
+          "method": "registry_probe",
+          "references": [
+            "registry.ollama.ai/v2/library/qwen3.6/manifests/35b"
+          ],
+          "notes": "Registry probe: manifest identity plus GGUF header metadata read without downloading. Capabilities are template/parser/projector declarations; unknown stays null; fit is not quality. Requires Ollama >= 0.30.0. Parser: qwen3.5."
+        }
+      }
+    },
+    {
+      "catalog_id": "qwen3-8b-q4-k-m",
+      "display_name": "Qwen 3 8B (Q4_K_M)",
+      "family": "qwen3",
+      "release_label": null,
+      "source": {
+        "kind": "local_registry_snapshot",
+        "provider": "ollama",
+        "upstream_id": "qwen3:8b",
+        "reference": "registry.ollama.ai/library/qwen3:8b",
+        "revision_digest": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41"
+      },
+      "properties": {
+        "architecture": "qwen3",
+        "parameter_count": 8190735360,
+        "quantizations": [
+          "Q4_K_M"
+        ],
+        "weight_size_bytes": 5225388164,
+        "native_context": 40960
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": true,
+        "thinking": true,
+        "vision": null,
+        "coding": null,
+        "instruction_following": null
+      },
+      "task_tags": [
+        "general",
+        "reasoning"
+      ],
+      "acquisition": {
+        "provider": "ollama",
+        "artifact_id": "qwen3:8b",
+        "exact_tag": "8b",
+        "expected_revision": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41",
+        "expected_size_bytes": 5225388164,
+        "source": "ollama_registry",
+        "provenance": {
+          "method": "transcribed_local_manifest_and_catalog_snapshot",
+          "observed_at": "2026-09-08T12:21:36Z",
+          "notes": "Exact local manifest digest and artifact byte size; this is an acquisition identity pin, not a download measurement."
+        }
+      },
+      "metadata": {
+        "release_date": null,
+        "license": "apache-2.0",
+        "checked_at": "2026-10-10T12:27:53Z",
+        "provenance": {
+          "method": "manual_local_seed",
+          "references": [
+            "ollama /api/tags",
+            "ollama /api/show",
+            "local Ollama manifest"
+          ],
+          "notes": "Snapshot of one locally installed artifact. Presence in the catalog does not imply installed/active state. Capabilities are provider declarations, not quality or reliability tests. Absent capabilities and unverified release/license fields remain null. Quantizations lists only locally observed options; weight size is artifact bytes, not runtime memory. Re-verified 2026-10-10: registry manifest unchanged and a fresh registry probe matched every recorded property and capability."
+        }
+      }
+    },
+    {
+      "catalog_id": "llama3.2-1b-q8-0",
+      "display_name": "Llama 3.2 1B (Q8_0)",
+      "family": "llama",
+      "release_label": null,
+      "source": {
+        "kind": "upstream_metadata",
+        "provider": "ollama",
+        "upstream_id": "llama3.2:1b",
+        "reference": "registry.ollama.ai/library/llama3.2:1b",
+        "revision_digest": "baf6a787fdffd633537aa2eb51cfd54cb93ff08e28040095462bb63daf552878"
+      },
+      "properties": {
+        "architecture": "llama",
+        "parameter_count": 1235814432,
+        "quantizations": [
+          "Q8_0"
+        ],
+        "weight_size_bytes": 1321098329,
+        "native_context": 131072
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": true,
+        "thinking": null,
+        "vision": null,
+        "coding": null,
+        "instruction_following": null
+      },
+      "task_tags": [
+        "general"
+      ],
+      "acquisition": {
+        "provider": "ollama",
+        "artifact_id": "llama3.2:1b",
+        "exact_tag": "1b",
+        "expected_revision": "baf6a787fdffd633537aa2eb51cfd54cb93ff08e28040095462bb63daf552878",
+        "expected_size_bytes": 1321098329,
+        "source": "ollama_registry",
+        "provenance": {
+          "method": "registry_manifest_probe",
+          "observed_at": "2026-10-04T11:59:26Z",
+          "notes": "Manifest sha256 and summed layer sizes from the public registry; an identity pin, not a download measurement."
+        }
+      },
+      "metadata": {
+        "release_date": null,
+        "license": "**Llama 3.2** **Acceptable Use Policy**",
+        "checked_at": "2026-10-04T11:59:26Z",
+        "provenance": {
+          "method": "registry_probe+curated_task_tags",
+          "references": [
+            "registry.ollama.ai/v2/library/llama3.2/manifests/1b",
+            "localaimaster.com/blog/ollama-model-ram-vram-table (updated Sept 2026)"
+          ],
+          "notes": "Registry probe: manifest identity plus GGUF header metadata read without downloading. Capabilities are template/parser/projector declarations; unknown stays null; fit is not quality. Task tags are descriptive, curated from the cited guides; not NOVA benchmarks."
+        }
+      }
+    },
+    {
+      "catalog_id": "llama3.2-3b-q4-k-m",
+      "display_name": "Llama 3.2 3B (Q4_K_M)",
+      "family": "llama",
+      "release_label": null,
+      "source": {
+        "kind": "upstream_metadata",
+        "provider": "ollama",
+        "upstream_id": "llama3.2:3b",
+        "reference": "registry.ollama.ai/library/llama3.2:3b",
+        "revision_digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72"
+      },
+      "properties": {
+        "architecture": "llama",
+        "parameter_count": 3212749888,
+        "quantizations": [
+          "Q4_K_M"
+        ],
+        "weight_size_bytes": 2019393189,
+        "native_context": 131072
+      },
+      "capabilities": {
+        "chat": true,
+        "tools": true,
+        "thinking": null,
+        "vision": null,
+        "coding": null,
+        "instruction_following": null
+      },
+      "task_tags": [],
+      "acquisition": {
+        "provider": "ollama",
+        "artifact_id": "llama3.2:3b",
+        "exact_tag": "3b",
+        "expected_revision": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+        "expected_size_bytes": 2019393189,
+        "source": "ollama_registry",
+        "provenance": {
+          "method": "registry_manifest_probe",
+          "observed_at": "2026-10-04T11:59:28Z",
+          "notes": "Manifest sha256 and summed layer sizes from the public registry; an identity pin, not a download measurement."
+        }
+      },
+      "metadata": {
+        "release_date": null,
+        "license": "**Llama 3.2** **Acceptable Use Policy**",
+        "checked_at": "2026-10-04T11:59:28Z",
+        "provenance": {
+          "method": "registry_probe",
+          "references": [
+            "registry.ollama.ai/v2/library/llama3.2/manifests/3b"
+          ],
+          "notes": "Registry probe: manifest identity plus GGUF header metadata read without downloading. Capabilities are template/parser/projector declarations; unknown stays null; fit is not quality."
+        }
+      }
+    }
+  ]
+}

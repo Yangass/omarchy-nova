@@ -1,0 +1,15 @@
+[Unit]
+Description=NOVA Local Orchestrator
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=@NOVA_ROOT@/novad
+ExecStart=@PYTHON@ server.py
+Restart=on-failure
+RestartSec=2
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,774 @@
+{
+  "schema_version": 1,
+  "evidence_revision": "2026-10-04.guides1",
+  "records": [
+    {
+      "evidence_id": "local-seed-qwen3.5-35b-declarations",
+      "evidence_type": "upstream_declared_capability",
+      "claim_kind": "FACT",
+      "models": [
+        {
+          "catalog_id": "qwen3.5-35b-q4-k-m",
+          "provider": "ollama",
+          "model_id": "qwen3.5:35b",
+          "revision": "72aac7c28be8ff9b81c2a270eb489c88e6d822a76ec0cb7bf34d965768848567",
+          "variant": "Q4_K_M"
+        }
+      ],
+      "profiles": [
+        "GENERAL",
+        "CODING",
+        "DEEP_REASONING",
+        "FAST_BACKGROUND",
+        "VISION"
+      ],
+      "source": {
+        "reference": "catalog/models.json#qwen3.5-35b-q4-k-m",
+        "version": "2026-09-08.seed1",
+        "observed_at": "2026-10-10T10:38:42Z",
+        "published_at": null
+      },
+      "trust_class": "LOCAL_OBSERVED",
+      "confidence": "MEDIUM",
+      "provenance": {
+        "method": "transcribed_existing_local_catalog_snapshot",
+        "references": [
+          "ollama /api/tags",
+          "ollama /api/show",
+          "local Ollama manifest"
+        ],
+        "corroborated": false
+      },
+      "scope": {
+        "workload": null,
+        "conditions": null,
+        "comparison_group": null
+      },
+      "facts": {
+        "capabilities": {
+          "chat": true,
+          "tools": true,
+          "thinking": true,
+          "coding": null,
+          "vision": true,
+          "instruction_following": null
+        },
+        "properties": {
+          "native_context": 262144,
+          "weight_size_bytes": 22069592181,
+          "parameter_count": 34660610688,
+          "architecture": "qwen35moe",
+          "quantization": "Q4_K_M"
+        }
+      },
+      "measurement": null,
+      "comparison": null,
+      "notes": "Transcription of the existing catalog observation, not a new observation or independently verified upstream claim. FACT means that the provider declared these values, not that capability quality or reliability was measured. Native context is not sustainable context. Profiles indicate lookup relevance, not suitability. No quality, speed, benchmark or calibration evidence exists here. Re-pinned 2026-10-10 to the re-published manifest (was 3460ffeede54); facts updated from a registry probe."
+    },
+    {
+      "evidence_id": "local-seed-qwen3-30b-declarations",
+      "evidence_type": "upstream_declared_capability",
+      "claim_kind": "FACT",
+      "models": [
+        {
+          "catalog_id": "qwen3-30b-q4-k-m",
+          "provider": "ollama",
+          "model_id": "qwen3:30b",
+          "revision": "ad815644918f0eaab341c12b67837cc6dd4562342cdaf118f83d5d554cb37226",
+          "variant": "Q4_K_M"
+        }
+      ],
+      "profiles": [
+        "GENERAL",
+        "CODING",
+        "DEEP_REASONING",
+        "FAST_BACKGROUND",
+        "VISION"
+      ],
+      "source": {
+        "reference": "catalog/models.json#qwen3-30b-q4-k-m",
+        "version": "2026-09-08.seed1",
+        "observed_at": "2026-10-10T12:27:53Z",
+        "published_at": null
+      },
+      "trust_class": "LOCAL_OBSERVED",
+      "confidence": "MEDIUM",
+      "provenance": {
+        "method": "transcribed_existing_local_catalog_snapshot",
+        "references": [
+          "ollama /api/tags",
+          "ollama /api/show",
+          "local Ollama manifest"
+        ],
+        "corroborated": false
+      },
+      "scope": {
+        "workload": null,
+        "conditions": null,
+        "comparison_group": null
+      },
+      "facts": {
+        "capabilities": {
+          "chat": true,
+          "tools": true,
+          "thinking": true,
+          "coding": null,
+          "vision": null,
+          "instruction_following": null
+        },
+        "properties": {
+          "native_context": 262144,
+          "weight_size_bytes": 18556699314,
+          "parameter_count": 30532122624,
+          "architecture": "qwen3moe",
+          "quantization": "Q4_K_M"
+        }
+      },
+      "measurement": null,
+      "comparison": null,
+      "notes": "Transcription of the existing catalog observation; dates are retained, not refreshed. Provider declarations and reported artifact properties only. Coding/instruction quality, vision support and speed remain unverified where null. No quality ordering, benchmark or calibration is asserted. Re-verified 2026-10-10: registry manifest unchanged and a fresh registry probe matched every recorded property and capability."
+    },
+    {
+      "evidence_id": "local-seed-qwen3-14b-declarations",
+      "evidence_type": "upstream_declared_capability",
+      "claim_kind": "FACT",
+      "models": [
+        {
+          "catalog_id": "qwen3-14b-q4-k-m",
+          "provider": "ollama",
+          "model_id": "qwen3:14b",
+          "revision": "bdbd181c33f2ed1b31c972991882db3cf4d192569092138a7d29e973cd9debe8",
+          "variant": "Q4_K_M"
+        }
+      ],
+      "profiles": [
+        "GENERAL",
+        "CODING",
+        "DEEP_REASONING",
+        "FAST_BACKGROUND",
+        "VISION"
+      ],
+      "source": {
+        "reference": "catalog/models.json#qwen3-14b-q4-k-m",
+        "version": "2026-09-08.seed1",
+        "observed_at": "2026-10-10T12:27:53Z",
+        "published_at": null
+      },
+      "trust_class": "LOCAL_OBSERVED",
+      "confidence": "MEDIUM",
+      "provenance": {
+        "method": "transcribed_existing_local_catalog_snapshot",
+        "references": [
+          "ollama /api/tags",
+          "ollama /api/show",
+          "local Ollama manifest"
+        ],
+        "corroborated": false
+      },
+      "scope": {
+        "workload": null,
+        "conditions": null,
+        "comparison_group": null
+      },
+      "facts": {
+        "capabilities": {
+          "chat": true,
+          "tools": true,
+          "thinking": true,
+          "coding": null,
+          "vision": null,
+          "instruction_following": null
+        },
+        "properties": {
+          "native_context": 40960,
+          "weight_size_bytes": 9276198565,
+          "parameter_count": 14768307200,
+          "architecture": "qwen3",
+          "quantization": "Q4_K_M"
+        }
+      },
+      "measurement": null,
+      "comparison": null,
+      "notes": "Existing local catalog facts only. Tool/thinking support declarations do not measure reliability or reasoning quality. Size and parameter count do not establish speed or overall quality. No measured comparison is available. Re-verified 2026-10-10: registry manifest unchanged and a fresh registry probe matched every recorded property and capability."
+    },
+    {
+      "evidence_id": "local-seed-qwen3-8b-declarations",
+      "evidence_type": "upstream_declared_capability",
+      "claim_kind": "FACT",
+      "models": [
+        {
+          "catalog_id": "qwen3-8b-q4-k-m",
+          "provider": "ollama",
+          "model_id": "qwen3:8b",
+          "revision": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41",
+          "variant": "Q4_K_M"
+        }
+      ],
+      "profiles": [
+        "GENERAL",
+        "CODING",
+        "DEEP_REASONING",
+        "FAST_BACKGROUND",
+        "VISION"
+      ],
+      "source": {
+        "reference": "catalog/models.json#qwen3-8b-q4-k-m",
+        "version": "2026-09-08.seed1",
+        "observed_at": "2026-10-10T12:27:53Z",
+        "published_at": null
+      },
+      "trust_class": "LOCAL_OBSERVED",
+      "confidence": "MEDIUM",
+      "provenance": {
+        "method": "transcribed_existing_local_catalog_snapshot",
+        "references": [
+          "ollama /api/tags",
+          "ollama /api/show",
+          "local Ollama manifest"
+        ],
+        "corroborated": false
+      },
+      "scope": {
+        "workload": null,
+        "conditions": null,
+        "comparison_group": null
+      },
+      "facts": {
+        "capabilities": {
+          "chat": true,
+          "tools": true,
+          "thinking": true,
+          "coding": null,
+          "vision": null,
+          "instruction_following": null
+        },
+        "properties": {
+          "native_context": 40960,
+          "weight_size_bytes": 5225388164,
+          "parameter_count": 8190735360,
+          "architecture": "qwen3",
+          "quantization": "Q4_K_M"
+        }
+      },
+      "measurement": null,
+      "comparison": null,
+      "notes": "Existing local catalog facts only. The smaller artifact is not labeled faster or weaker. Unknown capabilities remain null; no benchmark, task-quality judgment or calibration is seeded. Re-verified 2026-10-10: registry manifest unchanged and a fresh registry probe matched every recorded property and capability."
+    },
+    {
+      "evidence_id": "guide-whatllm-gemma4-12b-q4-k-m",
+      "evidence_type": "published_recommendation",
+      "claim_kind": "QUALITY_JUDGMENT",
+      "models": [
+        {
+          "catalog_id": "gemma4-12b-q4-k-m",
+          "provider": "ollama",
+          "model_id": "gemma4:12b",
+          "revision": "6114515d63c17436a7c0417d82820ac65ad643e2806c5a3c89cb62846436ed0b",
+          "variant": "Q4_K_M"
+        }
+      ],
+      "profiles": [
+        "GENERAL"
+      ],
+      "source": {
+        "reference": "https://whatllm.org/best-ollama-models",
+        "version": null,
+        "observed_at": "2026-10-04T11:40:00Z",
+        "published_at": null
+      },
+      "trust_class": "CURATED_NOVA",
+      "confidence": "LOW",
+      "provenance": {
+        "method": "curated_from_published_guide_read_by_nova",
+        "references": [
+          "https://whatllm.org/best-ollama-models"
+        ],
+        "corroborated": false
+      },
+      "scope": {
+        "workload": null,
+        "conditions": null,
+        "comparison_group": null
+      },
+      "recommendation": {
+        "publisher": "whatllm.org",
+        "title": "Best Ollama Models in 2026 (July 2026)",
+        "summary": "Compact general model for mainstream 8-16 GB hardware."
+      },
+      "notes": "Attribution of a published guide's recommendation for this exact catalog artifact; not tested by NOVA. Fit is not quality."
+    },
+    {
+      "evidence_id": "guide-whatllm-qwen3.6-27b-q4-k-m",
+      "evidence_type": "published_recommendation",
+      "claim_kind": "QUALITY_JUDGMENT",
+      "models": [
+        {
+          "catalog_id": "qwen3.6-27b-q4-k-m",
+          "provider": "ollama",
+          "model_id": "qwen3.6:27b",
+          "revision": "bcbdbd4bcf86f2c4a56cd1698fb31f9434f7dd99752f71b636c750aaa67a49a5",
+          "variant": "Q4_K_M"
+        }
+      ],
+      "profiles": [
+        "GENERAL"
+      ],
+      "source": {
+        "reference": "https://whatllm.org/best-ollama-models",
+        "version": null,
+        "observed_at": "2026-10-04T11:40:00Z",
+        "published_at": null
+      },
+      "trust_class": "CURATED_NOVA",
+      "confidence": "LOW",
+      "provenance": {
+        "method": "curated_from_published_guide_read_by_nova",
+        "references": [
+          "https://whatllm.org/best-ollama-models"
+        ],
+        "corroborated": false
+      },
+      "scope": {
+        "workload": null,
+        "conditions": null,
+        "comparison_group": null
+      },
+      "recommendation": {
+        "publisher": "whatllm.org",
+        "title": "Best Ollama Models in 2026 (July 2026)",
+        "summary": "Best overall / balanced general model for 16-24 GB systems."
+      },
+      "notes": "Attribution of a published guide's recommendation for this exact catalog artifact; not tested by NOVA. Fit is not quality."
+    },
+    {
+      "evidence_id": "guide-whatllm-gemma4-26b-q4-k-m",
+      "evidence_type": "published_recommendation",
+      "claim_kind": "QUALITY_JUDGMENT",
+      "models": [
+        {
+          "catalog_id": "gemma4-26b-q4-k-m",
+          "provider": "ollama",
+          "model_id": "gemma4:26b",
+          "revision": "001e5dafc3c77684c2307ebc6ab8e336e10c9b18eca52acf547d72fc83c3ca8c",
+          "variant": "Q4_K_M"
+        }
+      ],
+      "profiles": [
+        "GENERAL"
+      ],
+      "source": {
+        "reference": "https://whatllm.org/best-ollama-models",
+        "version": null,
+        "observed_at": "2026-10-04T11:40:00Z",
+        "published_at": null
+      },
+      "trust_class": "CURATED_NOVA",
+      "confidence": "LOW",
+      "provenance": {
+        "method": "curated_from_published_guide_read_by_nova",
+        "references": [
+          "https://whatllm.org/best-ollama-models"
+        ],
+        "corroborated": false
+      },
+      "scope": {
+        "workload": null,
+        "conditions": null,
+        "comparison_group": null
+      },
+      "recommendation": {
+        "publisher": "whatllm.org",
+        "title": "Best Ollama Models in 2026 (July 2026)",
+        "summary": "Mid-tier general model for 16-24 GB developer machines."
+      },
+      "notes": "Attribution of a published guide's recommendation for this exact catalog artifact; not tested by NOVA. Fit is not quality."
+    },
+    {
+      "evidence_id": "guide-whatllm-qwen3-coder-30b-q4-k-m",
+      "evidence_type": "published_recommendation",
+      "claim_kind": "QUALITY_JUDGMENT",
+      "models": [
+        {
+          "catalog_id": "qwen3-coder-30b-q4-k-m",
+          "provider": "ollama",
+          "model_id": "qwen3-coder:30b",
+          "revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+          "variant": "Q4_K_M"
+        }
+      ],
+      "profiles": [
+        "CODING"
+      ],
+      "source": {
+        "reference": "https://whatllm.org/best-ollama-models",
+        "version": null,
+        "observed_at": "2026-10-04T11:40:00Z",
+        "published_at": null
+      },
+      "trust_class": "CURATED_NOVA",
+      "confidence": "LOW",
+      "provenance": {
+        "method": "curated_from_published_guide_read_by_nova",
+        "references": [
+          "https://whatllm.org/best-ollama-models"
+        ],
+        "corroborated": false
+      },
+      "scope": {
+        "workload": null,
+        "conditions": null,
+        "comparison_group": null
+      },
+      "recommendation": {
+        "publisher": "whatllm.org",
+        "title": "Best Ollama Models in 2026 (July 2026)",
+        "summary": "Coding model with agentic training and 256K context for 24 GB GPUs."
+      },
+      "notes": "Attribution of a published guide's recommendation for this exact catalog artifact; not tested by NOVA. Fit is not quality."
+    },
+    {
+      "evidence_id": "guide-whatllm-qwen3-8b-q4-k-m",
+      "evidence_type": "published_recommendation",
+      "claim_kind": "QUALITY_JUDGMENT",
+      "models": [
+        {
+          "catalog_id": "qwen3-8b-q4-k-m",
+          "provider": "ollama",
+          "model_id": "qwen3:8b",
+          "revision": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41",
+          "variant": "Q4_K_M"
+        }
+      ],
+      "profiles": [
+        "GENERAL"
+      ],
+      "source": {
+        "reference": "https://whatllm.org/best-ollama-models",
+        "version": null,
+        "observed_at": "2026-10-04T11:40:00Z",
+        "published_at": null
+      },
+      "trust_class": "CURATED_NOVA",
+      "confidence": "LOW",
+      "provenance": {
+        "method": "curated_from_published_guide_read_by_nova",
+        "references": [
+          "https://whatllm.org/best-ollama-models"
+        ],
+        "corroborated": false
+      },
+      "scope": {
+        "workload": null,
+        "conditions": null,
+        "comparison_group": null
+      },
+      "recommendation": {
+        "publisher": "whatllm.org",
+        "title": "Best Ollama Models in 2026 (July 2026)",
+        "summary": "Smaller fallback for chat, snippets and bounded coding help (8-16 GB)."
+      },
+      "notes": "Attribution of a published guide's recommendation for this exact catalog artifact; not tested by NOVA. Fit is not quality."
+    },
+    {
+      "evidence_id": "guide-whatllm-qwen3-14b-q4-k-m",
+      "evidence_type": "published_recommendation",
+      "claim_kind": "QUALITY_JUDGMENT",
+      "models": [
+        {
+          "catalog_id": "qwen3-14b-q4-k-m",
+          "provider": "ollama",
+          "model_id": "qwen3:14b",
+          "revision": "bdbd181c33f2ed1b31c972991882db3cf4d192569092138a7d29e973cd9debe8",
+          "variant": "Q4_K_M"
+        }
+      ],
+      "profiles": [
+        "GENERAL"
+      ],
+      "source": {
+        "reference": "https://whatllm.org/best-ollama-models",
+        "version": null,
+        "observed_at": "2026-10-04T11:40:00Z",
+        "published_at": null
+      },
+      "trust_class": "CURATED_NOVA",
+      "confidence": "LOW",
+      "provenance": {
+        "method": "curated_from_published_guide_read_by_nova",
+        "references": [
+          "https://whatllm.org/best-ollama-models"
+        ],
+        "corroborated": false
+      },
+      "scope": {
+        "workload": null,
+        "conditions": null,
+        "comparison_group": null
+      },
+      "recommendation": {
+        "publisher": "whatllm.org",
+        "title": "Best Ollama Models in 2026 (July 2026)",
+        "summary": "Small chat model for 8-16 GB with tighter context."
+      },
+      "notes": "Attribution of a published guide's recommendation for this exact catalog artifact; not tested by NOVA. Fit is not quality."
+    },
+    {
+      "evidence_id": "guide-localaimaster-qwen3-coder-30b-q4-k-m",
+      "evidence_type": "published_recommendation",
+      "claim_kind": "QUALITY_JUDGMENT",
+      "models": [
+        {
+          "catalog_id": "qwen3-coder-30b-q4-k-m",
+          "provider": "ollama",
+          "model_id": "qwen3-coder:30b",
+          "revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+          "variant": "Q4_K_M"
+        }
+      ],
+      "profiles": [
+        "CODING"
+      ],
+      "source": {
+        "reference": "https://localaimaster.com/blog/ollama-model-ram-vram-table",
+        "version": null,
+        "observed_at": "2026-10-04T11:40:00Z",
+        "published_at": null
+      },
+      "trust_class": "CURATED_NOVA",
+      "confidence": "LOW",
+      "provenance": {
+        "method": "curated_from_published_guide_read_by_nova",
+        "references": [
+          "https://localaimaster.com/blog/ollama-model-ram-vram-table"
+        ],
+        "corroborated": false
+      },
+      "scope": {
+        "workload": null,
+        "conditions": null,
+        "comparison_group": null
+      },
+      "recommendation": {
+        "publisher": "localaimaster.com",
+        "title": "Best Ollama Models for 8GB, 12GB, 16GB & 24GB VRAM (updated Sept 2026)",
+        "summary": "Listed as the best local coding model for 24 GB VRAM."
+      },
+      "notes": "Attribution of a published guide's recommendation for this exact catalog artifact; not tested by NOVA. Fit is not quality."
+    },
+    {
+      "evidence_id": "guide-localaimaster-llama3.1-8b-q4-k-m",
+      "evidence_type": "published_recommendation",
+      "claim_kind": "QUALITY_JUDGMENT",
+      "models": [
+        {
+          "catalog_id": "llama3.1-8b-q4-k-m",
+          "provider": "ollama",
+          "model_id": "llama3.1:8b",
+          "revision": "46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e",
+          "variant": "Q4_K_M"
+        }
+      ],
+      "profiles": [
+        "GENERAL"
+      ],
+      "source": {
+        "reference": "https://localaimaster.com/blog/ollama-model-ram-vram-table",
+        "version": null,
+        "observed_at": "2026-10-04T11:40:00Z",
+        "published_at": null
+      },
+      "trust_class": "CURATED_NOVA",
+      "confidence": "LOW",
+      "provenance": {
+        "method": "curated_from_published_guide_read_by_nova",
+        "references": [
+          "https://localaimaster.com/blog/ollama-model-ram-vram-table"
+        ],
+        "corroborated": false
+      },
+      "scope": {
+        "workload": null,
+        "conditions": null,
+        "comparison_group": null
+      },
+      "recommendation": {
+        "publisher": "localaimaster.com",
+        "title": "Best Ollama Models for 8GB, 12GB, 16GB & 24GB VRAM (updated Sept 2026)",
+        "summary": "Strong general-purpose chat model for 8 GB VRAM."
+      },
+      "notes": "Attribution of a published guide's recommendation for this exact catalog artifact; not tested by NOVA. Fit is not quality."
+    },
+    {
+      "evidence_id": "guide-localaimaster-llama3.2-1b-q8-0",
+      "evidence_type": "published_recommendation",
+      "claim_kind": "QUALITY_JUDGMENT",
+      "models": [
+        {
+          "catalog_id": "llama3.2-1b-q8-0",
+          "provider": "ollama",
+          "model_id": "llama3.2:1b",
+          "revision": "baf6a787fdffd633537aa2eb51cfd54cb93ff08e28040095462bb63daf552878",
+          "variant": "Q8_0"
+        }
+      ],
+      "profiles": [
+        "GENERAL"
+      ],
+      "source": {
+        "reference": "https://localaimaster.com/blog/ollama-model-ram-vram-table",
+        "version": null,
+        "observed_at": "2026-10-04T11:40:00Z",
+        "published_at": null
+      },
+      "trust_class": "CURATED_NOVA",
+      "confidence": "LOW",
+      "provenance": {
+        "method": "curated_from_published_guide_read_by_nova",
+        "references": [
+          "https://localaimaster.com/blog/ollama-model-ram-vram-table"
+        ],
+        "corroborated": false
+      },
+      "scope": {
+        "workload": null,
+        "conditions": null,
+        "comparison_group": null
+      },
+      "recommendation": {
+        "publisher": "localaimaster.com",
+        "title": "Best Ollama Models for 8GB, 12GB, 16GB & 24GB VRAM (updated Sept 2026)",
+        "summary": "Lightweight general use for 4 GB GPUs or CPU-only machines."
+      },
+      "notes": "Attribution of a published guide's recommendation for this exact catalog artifact; not tested by NOVA. Fit is not quality."
+    },
+    {
+      "evidence_id": "guide-llmconfigurator-phi4-mini-latest-q4-k-m",
+      "evidence_type": "published_recommendation",
+      "claim_kind": "QUALITY_JUDGMENT",
+      "models": [
+        {
+          "catalog_id": "phi4-mini-latest-q4-k-m",
+          "provider": "ollama",
+          "model_id": "phi4-mini:latest",
+          "revision": "78fad5d182a7c33065e153a5f8ba210754207ba9d91973f57dffa7f487363753",
+          "variant": "Q4_K_M"
+        }
+      ],
+      "profiles": [
+        "GENERAL"
+      ],
+      "source": {
+        "reference": "https://llmconfigurator.com/en/guides/best-local-llm-by-vram",
+        "version": null,
+        "observed_at": "2026-10-04T11:40:00Z",
+        "published_at": null
+      },
+      "trust_class": "CURATED_NOVA",
+      "confidence": "LOW",
+      "provenance": {
+        "method": "curated_from_published_guide_read_by_nova",
+        "references": [
+          "https://llmconfigurator.com/en/guides/best-local-llm-by-vram"
+        ],
+        "corroborated": false
+      },
+      "scope": {
+        "workload": null,
+        "conditions": null,
+        "comparison_group": null
+      },
+      "recommendation": {
+        "publisher": "llmconfigurator.com",
+        "title": "Best Local LLM by VRAM Tier (July 2026)",
+        "summary": "Best pick for 4 GB VRAM: general chat, light coding and reasoning."
+      },
+      "notes": "Attribution of a published guide's recommendation for this exact catalog artifact; not tested by NOVA. Fit is not quality."
+    },
+    {
+      "evidence_id": "guide-llmconfigurator-llama3.1-8b-q4-k-m",
+      "evidence_type": "published_recommendation",
+      "claim_kind": "QUALITY_JUDGMENT",
+      "models": [
+        {
+          "catalog_id": "llama3.1-8b-q4-k-m",
+          "provider": "ollama",
+          "model_id": "llama3.1:8b",
+          "revision": "46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e",
+          "variant": "Q4_K_M"
+        }
+      ],
+      "profiles": [
+        "GENERAL"
+      ],
+      "source": {
+        "reference": "https://llmconfigurator.com/en/guides/best-local-llm-by-vram",
+        "version": null,
+        "observed_at": "2026-10-04T11:40:00Z",
+        "published_at": null
+      },
+      "trust_class": "CURATED_NOVA",
+      "confidence": "LOW",
+      "provenance": {
+        "method": "curated_from_published_guide_read_by_nova",
+        "references": [
+          "https://llmconfigurator.com/en/guides/best-local-llm-by-vram"
+        ],
+        "corroborated": false
+      },
+      "scope": {
+        "workload": null,
+        "conditions": null,
+        "comparison_group": null
+      },
+      "recommendation": {
+        "publisher": "llmconfigurator.com",
+        "title": "Best Local LLM by VRAM Tier (July 2026)",
+        "summary": "Best general-purpose pick for 8 GB VRAM."
+      },
+      "notes": "Attribution of a published guide's recommendation for this exact catalog artifact; not tested by NOVA. Fit is not quality."
+    },
+    {
+      "evidence_id": "guide-llmconfigurator-qwen3-14b-q4-k-m",
+      "evidence_type": "published_recommendation",
+      "claim_kind": "QUALITY_JUDGMENT",
+      "models": [
+        {
+          "catalog_id": "qwen3-14b-q4-k-m",
+          "provider": "ollama",
+          "model_id": "qwen3:14b",
+          "revision": "bdbd181c33f2ed1b31c972991882db3cf4d192569092138a7d29e973cd9debe8",
+          "variant": "Q4_K_M"
+        }
+      ],
+      "profiles": [
+        "GENERAL"
+      ],
+      "source": {
+        "reference": "https://llmconfigurator.com/en/guides/best-local-llm-by-vram",
+        "version": null,
+        "observed_at": "2026-10-04T11:40:00Z",
+        "published_at": null
+      },
+      "trust_class": "CURATED_NOVA",
+      "confidence": "LOW",
+      "provenance": {
+        "method": "curated_from_published_guide_read_by_nova",
+        "references": [
+          "https://llmconfigurator.com/en/guides/best-local-llm-by-vram"
+        ],
+        "corroborated": false
+      },
+      "scope": {
+        "workload": null,
+        "conditions": null,
+        "comparison_group": null
+      },
+      "recommendation": {
+        "publisher": "llmconfigurator.com",
+        "title": "Best Local LLM by VRAM Tier (July 2026)",
+        "summary": "Best general-purpose pick for 16 GB VRAM."
+      },
+      "notes": "Attribution of a published guide's recommendation for this exact catalog artifact; not tested by NOVA. Fit is not quality."
+    }
+  ]
+}
