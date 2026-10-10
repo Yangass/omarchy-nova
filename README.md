@@ -1,5 +1,4 @@
 # NOVA
-*Work in progress*
 
 **Run AI models on your own computer, without the terminal.**
 
