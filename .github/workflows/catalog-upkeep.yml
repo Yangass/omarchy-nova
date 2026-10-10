@@ -1,0 +1,50 @@
+# Weekly catalog upkeep: did Ollama re-publish or remove a pinned model, and are
+# entries older than 30 days? Opens (or updates) one issue when something needs a
+# curation pass. NOVA keeps working meanwhile: installs follow small re-publishes.
+name: Catalog upkeep
+on:
+  schedule:
+    - cron: "17 9 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Drift and freshness reports
+        id: reports
+        run: |
+          set +e
+          python3 -B tools/catalog_drift_report.py > drift.txt; drift=$?
+          python3 -B tools/catalog_report.py --strict > health.txt; health=$?
+          cat drift.txt health.txt
+          echo "drift=$drift" >> "$GITHUB_OUTPUT"
+          echo "health=$health" >> "$GITHUB_OUTPUT"
+      - name: Open or update the upkeep issue
+        if: steps.reports.outputs.drift == '1' || steps.reports.outputs.health == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "The weekly catalog check found something to curate."
+            echo
+            echo '### Drift (Ollama re-published or removed a pinned model)'
+            echo '```'; cat drift.txt; echo '```'
+            echo '### Freshness'
+            echo '```'; cat health.txt; echo '```'
+            echo
+            echo "_Run ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}_"
+          } > body.md
+          number=$(gh issue list --label catalog-upkeep --state open --json number --jq '.[0].number')
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body-file body.md
+          else
+            gh label create catalog-upkeep --color C2E0C6 --description "Weekly catalog check" 2>/dev/null || true
+            gh issue create --title "Catalog upkeep: curation due" --label catalog-upkeep --body-file body.md
+          fi
