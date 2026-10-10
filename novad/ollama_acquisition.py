@@ -92,9 +92,16 @@ def inspect_artifact(descriptor):
         return {'state': 'unknown', 'reason': 'manifest_unavailable'}
 
 
+def installed_revision(artifact_id):
+    """The manifest digest Ollama reports for this exact name, or None."""
+    matches = [m for m in local_json('/api/tags')['models'] if m.get('name') == artifact_id]
+    return matches[0].get('digest') if len(matches) == 1 and isinstance(matches[0].get('digest'), str) else None
+
+
 class OllamaAcquisitionAdapter:
     simulation = False
     cancellation_supported = False
+    replace_revision = None  # set by the lifecycle for an approved model update
 
     def __init__(self):
         self.lock, self.started = Lock(), False
@@ -128,7 +135,9 @@ class OllamaAcquisitionAdapter:
                 return
             existing = inspect_artifact(descriptor)['state']
             if existing == 'exact': self._publish('complete'); return
-            if existing != 'absent':
+            replacing = (existing == 'mismatch' and isinstance(self.replace_revision, str)
+                         and installed_revision(descriptor.artifact_id) == self.replace_revision)
+            if existing != 'absent' and not replacing:
                 self._publish('failed', failure=failure_detail('preflight', 'artifact_state_not_absent'))
                 return
             conn = connection()

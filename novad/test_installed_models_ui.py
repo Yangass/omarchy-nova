@@ -26,12 +26,13 @@ class InstalledModelsUiContractTests(unittest.TestCase):
 
     def test_refresh_control_is_explicit_focusable_and_uses_existing_endpoint(self):
         self.assertIn('objectName: "refreshInstalledModelsButton"', PANEL)
-        self.assertIn('Accessible.name: "Refresh installed models"', PANEL)
+        # 0.14.0: REFRESH also forces the model update check.
+        self.assertIn('Accessible.name: "Refresh installed models and check for updates"', PANEL)
         button = PANEL[PANEL.index('objectName: "refreshInstalledModelsButton"'):
                        PANEL.index('objectName: "installedModelsRepeater"')]
         self.assertIn('focusable: true', button)
         self.assertIn('enabled: !root.installedModelsLoading', button)
-        self.assertIn('onClicked: root.refreshModels()', button)
+        self.assertIn('onClicked: { root.refreshModels(); root.refreshModelUpdates(true) }', button)
 
     def test_loading_and_empty_states_are_truthful_not_a_loading_placeholder(self):
         self.assertIn('REFRESHING INSTALLED INVENTORY…', PANEL)

@@ -360,7 +360,11 @@ class AcquisitionLifecycle:
                 recovery_allows_retry = bool(recovery and recovery['retry_allowed'])
                 if same_artifact and (row['state'] not in TERMINAL or (row['state'] == 'RECOVERY_REQUIRED' and not recovery_allows_retry)):
                     raise LifecycleError('acquisition_conflict')
-                if old == preflight['descriptor'] and row['state'] == 'INSTALLED' and row['simulation'] == getattr(self.adapter_factory, 'simulation', True) and preflight.get('inventory_state') != 'NOT_INSTALLED':
+                # An update's preflight has just observed a different build on disk, so an
+                # earlier completed install of the same build does not make it a repeat (run 8).
+                if old == preflight['descriptor'] and row['state'] == 'INSTALLED' and row['simulation'] == getattr(self.adapter_factory, 'simulation', True) \
+                        and preflight.get('inventory_state') != 'NOT_INSTALLED' \
+                        and not (preflight.get('intent') == 'update' and preflight.get('inventory_state') == 'INSTALLED_DIFFERENT_REVISION'):
                     raise LifecycleError('acquisition_already_completed')
             identifier, now = 'acq_' + secrets.token_urlsafe(32), self.clock()
             self.records[identifier] = {'id': identifier, 'action': 'acquire_catalog_model', 'simulation': getattr(self.adapter_factory, 'simulation', True),
@@ -402,6 +406,9 @@ class AcquisitionLifecycle:
                     self._transition(row, 'STARTING')
                     adapter = self.adapter_factory()
                     self.jobs[identifier] = adapter
+                    if row['preflight'].get('intent') == 'update':
+                        # Only the exact older build named in the approved proposal may be replaced.
+                        adapter.replace_revision = row['preflight'].get('replaces_revision')
                     adapter.begin(descriptor)
                     self._transition(row, 'DOWNLOADING')
                 elif row['state'] in ('DOWNLOADING', 'CANCEL_REQUESTED'):

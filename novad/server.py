@@ -29,6 +29,7 @@ from recommendation_integration import (RecommendationRequestError,
                                         load_and_build_recommendations, parse_request)
 from onboarding_integration import collect_onboarding_state
 import catalog_repins
+import model_updates
 import requested_models
 from model_removal import RemovalStore
 from catalog import DEFAULT_PATH as CATALOG_DEFAULT_PATH, load_catalog
@@ -63,7 +64,7 @@ ACTIVE_MODEL: str | None = None
 TELEMETRY_ROUTES = {"/telemetry/cpu": "/v1/cpu", "/telemetry/memory": "/v1/memory", "/telemetry/gpu": "/v1/gpu", "/telemetry/disks": "/v1/disks", "/telemetry/temperatures": "/v1/temperatures", "/telemetry/network": "/v1/network"}
 # What NOVA is, so "what are you?" gets a true answer (Konstantin, 2026-10-10: the model
 # described only its rules). Keep it factual and short: small local models read it every turn.
-ABOUT_NOVA = """About you: NOVA is an open-source (MIT) plugin for Omarchy, made by Konstantin Tarasevic with AI assistance. Omarchy is the Linux desktop this computer runs (Arch Linux with Hyprland); NOVA is a plugin inside it, not the other way round. NOVA sits in the top bar; its panel has three views. CHAT is this conversation. MODELS lists the installed models (load, unload or delete them), a curated list of models checked against this computer's memory, graphics card and disk, and ADD A MODEL for any model in Ollama's library; every download needs the user's approval. MACHINE shows CPU, memory, graphics, disk, network, which models are in memory, and versions. Everything runs on this computer: the language model runs locally through Ollama, conversations never go to a cloud service, and NOVA has no account and no telemetry. NOVA uses the internet only to download models, read model details from Ollama's library, and check once a week for a newer NOVA. In this chat you cannot install, delete or switch models: point the user to MODELS. When asked who or what you are, answer as NOVA and say which local model you are running on; do not present yourself as a product of the model's publisher."""
+ABOUT_NOVA = """About you: NOVA is an open-source (MIT) plugin for Omarchy, made by Konstantin Tarasevic with AI assistance. Omarchy is the Linux desktop this computer runs (Arch Linux with Hyprland); NOVA is a plugin inside it, not the other way round. NOVA sits in the top bar; its panel has three views. CHAT is this conversation. MODELS lists the installed models (load, unload, update or delete them; NOVA checks Ollama's library weekly for newer builds and updates only after the user approves), a curated list of models checked against this computer's memory, graphics card and disk, and ADD A MODEL for any model in Ollama's library; every download needs the user's approval. MACHINE shows CPU, memory, graphics, disk, network, which models are in memory, and versions. Everything runs on this computer: the language model runs locally through Ollama, conversations never go to a cloud service, and NOVA has no account and no telemetry. NOVA uses the internet only to download models, read model details from Ollama's library, and check once a week for a newer NOVA. In this chat you cannot install, delete or switch models: point the user to MODELS. When asked who or what you are, answer as NOVA and say which local model you are running on; do not present yourself as a product of the model's publisher."""
 
 def system_prompt(model_id: str) -> str:
     return ABOUT_NOVA + f" You are currently running on the local model {model_id}.\n\n" + SYSTEM_INSTRUCTIONS
@@ -165,14 +166,42 @@ def local_recommendations(query: str) -> dict[str, Any]:
     request = parse_request(query)
     return load_and_build_recommendations(catalog_view(include_models=True), local_model_fit(), request)
 
-def local_acquisition_preflight(catalog_id: str) -> dict[str, Any] | None:
+def local_acquisition_preflight(catalog_id: str, allow_update: bool = False) -> dict[str, Any] | None:
     """Advisory only: normalize existing read-only catalog/fit/storage snapshots."""
     try:
         provider_version = PROVIDERS['ollama'].version()
     except (OSError, ValueError, TypeError, KeyError):
         provider_version = None
     return live_preflight(catalog_view(include_models=True), local_model_fit(), catalog_id,
-                          provider_version=provider_version)
+                          provider_version=provider_version, allow_update=allow_update)
+
+
+# Model updates: checked once a week (or on REFRESH) in the background; never downloads.
+MODEL_UPDATES_LOCK = Lock()
+MODEL_UPDATES_RUNNING = Event()
+
+def _run_model_update_check() -> None:
+    try:
+        state = model_updates.check_all(catalog_view(include_models=True).get('models', []))
+        audit('model_updates_checked', available=model_updates.view(state, catalog_view(include_models=True).get('models', []))['available'],
+              failed=state['failed'])
+    except (OSError, ValueError, TypeError, KeyError):
+        audit('model_updates_checked', failed=True)
+    finally:
+        MODEL_UPDATES_RUNNING.clear()
+
+def start_model_update_check(force: bool) -> bool:
+    with MODEL_UPDATES_LOCK:
+        if MODEL_UPDATES_RUNNING.is_set(): return True
+        if not force and not model_updates.due(model_updates.load(), time.time()): return False
+        MODEL_UPDATES_RUNNING.set()
+    Thread(target=_run_model_update_check, daemon=True).start()
+    return True
+
+def model_updates_view(force: bool = False) -> dict[str, Any]:
+    checking = start_model_update_check(force)
+    view = model_updates.view(model_updates.load(), catalog_view(include_models=True).get('models', []))
+    return dict(view, checking=checking)
 
 def refresh_shipped_pin(catalog_id: str) -> dict[str, Any]:
     """Before an install is proposed, follow Ollama if it re-published this tag (catalog_repins / requested_models)."""
@@ -420,7 +449,8 @@ class ApprovalStore:
         if identifier.startswith('acq_'):
             try:
                 store = acquisition_store()
-                result = store.decide(identifier, decision, local_acquisition_preflight)
+                update = store.get(identifier)['preflight'].get('intent') == 'update'
+                result = store.decide(identifier, decision, lambda catalog_id: local_acquisition_preflight(catalog_id, allow_update=update))
                 if result['state'] == 'APPROVED':
                     Thread(target=store.run, args=(identifier,), daemon=True).start()
                 return 202, result
@@ -666,8 +696,52 @@ def run_agent_loop(user_message: str, on_token: Callable[[str], None] | None = N
             messages.append({"role": "tool", "tool_name": tool_name, "content": json.dumps(result, separators=(",", ":"))})
     raise OllamaFailure("Diagnostic tool-call safety limit reached.")
 
+# --- owner-only loopback (identical in novad, nova-actions and nova-system-tools) ---
+# Every local account can connect to 127.0.0.1, so a loopback port alone does not say
+# who is asking (Omarchy marketplace review, 2026-10-10). Before any request is read,
+# the kernel's socket table names the account that owns the client end of the
+# connection; anything but this desktop user, or an answer that is not exactly one
+# account, is refused by closing the connection.
+TCP_TABLES = ("/proc/net/tcp", "/proc/net/tcp6")
+
+
+def _proc_address(text):
+    import ipaddress, sys
+    host, port = text.split(":")
+    raw = bytes.fromhex(host)
+    if sys.byteorder == "little": raw = b"".join(raw[i:i + 4][::-1] for i in range(0, len(raw), 4))
+    address = ipaddress.ip_address(raw)
+    if address.version == 6 and address.ipv4_mapped: address = address.ipv4_mapped
+    return str(address), int(port, 16)
+
+
+def peer_uid(client, server, tables=TCP_TABLES):
+    """UID owning the established connection client -> server, or None unless exactly one."""
+    owners = set()
+    for table in tables:
+        try:
+            with open(table) as file: rows = file.read().splitlines()[1:]
+        except OSError: continue
+        for row in rows:
+            fields = row.split()
+            try:
+                if fields[3] != "01": continue  # ESTABLISHED
+                if _proc_address(fields[1]) == (client[0], client[1]) and _proc_address(fields[2]) == (server[0], server[1]):
+                    owners.add(int(fields[7]))
+            except (IndexError, ValueError): continue
+    return owners.pop() if len(owners) == 1 else None
+
+
+class OwnerOnlyHTTPServer(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def verify_request(self, request, client_address):
+        return peer_uid(client_address, self.server_address[:2]) == os.getuid()
+# --- end owner-only loopback ---
+
+
 class Handler(BaseHTTPRequestHandler):
-    server_version = "novad/0.13.2"
+    server_version = "novad/0.14.0"
     def log_message(self, _format: str, *_args: Any) -> None: return
     def send_json(self, status: HTTPStatus, payload: dict[str, Any]) -> bool:
         body = json.dumps(payload, separators=(",", ":")).encode()
@@ -758,6 +832,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.query: self.send_json(HTTPStatus.BAD_REQUEST, {"error": "Query parameters are not accepted."}); return
         if self.path == "/health": self.send_json(HTTPStatus.OK, {"status": "ok", "timestamp": utc_now(), "loopback_only": True, "ollama": dependency_health(OLLAMA_URL + "/api/tags"), "system_tools": dependency_health(SYSTEM_TOOLS_URL + "/health"), "selection_state":"selected" if has_active_selection() else "none", "active_provider":ACTIVE_PROVIDER, "active_model":ACTIVE_MODEL})
+        elif self.path == "/models/updates": self.send_json(HTTPStatus.OK, model_updates_view())
         elif self.path in ("/catalog/models", "/catalog/status"):
             self.send_json(HTTPStatus.OK, catalog_view(include_models=self.path == "/catalog/models"))
         elif self.path == "/hardware/profile": self.send_json(HTTPStatus.OK, hardware_profile())
@@ -842,8 +917,22 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(HTTPStatus.CREATED, result)
             except LifecycleError as error: self.send_json(HTTPStatus(error.status), {'error': error.code})
             return
-        if parsed.path.startswith('/acquisition/models/') and parsed.path.endswith('/propose'):
-            identifier = parsed.path[len('/acquisition/models/'):-len('/propose')]
+        if parsed.path == '/models/updates/check':
+            if parsed.query or not self.empty_request_body():
+                self.send_json(HTTPStatus.BAD_REQUEST, {'error': 'invalid_update_check_request'}); return
+            self.send_json(HTTPStatus.ACCEPTED, model_updates_view(force=True)); return
+        if parsed.path.startswith('/models/updates/') and parsed.path.rsplit('/', 1)[-1] in ('skip', 'unskip'):
+            catalog_id, _, verb = parsed.path[len('/models/updates/'):].rpartition('/')
+            if parsed.query or not self.empty_request_body() or not catalog_id or '/' in catalog_id:
+                self.send_json(HTTPStatus.BAD_REQUEST, {'error': 'invalid_update_skip_request'}); return
+            if model_updates.set_skipped(catalog_id, verb == 'skip') is None:
+                self.send_json(HTTPStatus.NOT_FOUND, {'error': 'no_update_offered'}); return
+            audit('model_update_' + verb, catalog_id=catalog_id)
+            self.send_json(HTTPStatus.OK, model_updates_view()); return
+        propose_suffix = next((s for s in ('/propose-update', '/propose') if parsed.path.endswith(s)), None)
+        if parsed.path.startswith('/acquisition/models/') and propose_suffix:
+            identifier = parsed.path[len('/acquisition/models/'):-len(propose_suffix)]
+            update = propose_suffix == '/propose-update'
             try: size = int(self.headers.get('Content-Length') or '0')
             except ValueError: size = -1
             if parsed.query or not identifier or '/' in identifier or size != 0 or self.headers.get('Transfer-Encoding'):
@@ -852,7 +941,7 @@ class Handler(BaseHTTPRequestHandler):
                 upstream = refresh_shipped_pin(identifier)
                 if upstream['status'] in ('gone', 'changed_too_much'):
                     self.send_json(HTTPStatus.CONFLICT, {'error': 'model_' + upstream['status'] + '_upstream', 'upstream': upstream}); return
-                preflight = local_acquisition_preflight(identifier)
+                preflight = local_acquisition_preflight(identifier, allow_update=update)
                 if preflight is None:
                     self.send_json(HTTPStatus.NOT_FOUND, {'error': 'catalog_model_not_found'}); return
                 if preflight.get('eligible') is not True:
@@ -1015,4 +1104,4 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     acquisition_store()  # Reconcile durable state before accepting requests.
     print(f"novad listening on http://{HOST}:{PORT}", flush=True)
-    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
+    OwnerOnlyHTTPServer((HOST, PORT), Handler).serve_forever()

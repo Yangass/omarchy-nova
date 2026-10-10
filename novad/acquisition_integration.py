@@ -85,7 +85,8 @@ def _dotted(value):
     return None if value is None else f'{value[0]}.{value[1]}.{value[2]}'
 
 
-def build_preflight(catalog_snapshot, fit_snapshot, catalog_id, disk_snapshot, writable=None, provider_version=None):
+def build_preflight(catalog_snapshot, fit_snapshot, catalog_id, disk_snapshot, writable=None, provider_version=None,
+                    allow_update=False):
     """Pure snapshot join used by tests and the live read-only adapter."""
     if not isinstance(catalog_id, str) or not catalog_id:
         raise ValueError('invalid catalog identity')
@@ -105,7 +106,7 @@ def build_preflight(catalog_snapshot, fit_snapshot, catalog_id, disk_snapshot, w
     result = evaluate_preflight(
         descriptor, _inventory(record), _fit(record, fit_snapshot), disk_snapshot,
         ProviderPreflight(supported, available, writable, version=provider_version, minimum_version=minimum),
-        PreflightRequest(catalog_snapshot.get('catalog_revision')))
+        PreflightRequest(catalog_snapshot.get('catalog_revision'), allow_update=allow_update))
     result['catalog_revision_used'] = catalog_snapshot.get('catalog_revision')
     result['acquisition_source'] = acquisition.get('source') if acquisition else None
     if trust == 'TRUSTED' and result['acquisition_source'] == 'ollama_registry_requested':
@@ -113,26 +114,32 @@ def build_preflight(catalog_snapshot, fit_snapshot, catalog_id, disk_snapshot, w
     else:
         result['trust_basis'] = 'backend_allowlist' if trust == 'TRUSTED' else 'not_trusted_by_backend_allowlist'
     result['provider_version'] = {'installed': _dotted(provider_version), 'required': _dotted(minimum)}
+    if allow_update:
+        result['intent'] = 'update'
+        result['replaces_revision'] = _inventory(record).observed_revision
     return result
 
 
-def live_preflight(catalog_snapshot, fit_snapshot, catalog_id, provider_version=None):
+def live_preflight(catalog_snapshot, fit_snapshot, catalog_id, provider_version=None, allow_update=False):
     """Use only current read-only snapshots and configured storage capacity."""
     disk, writable = storage_observation()
     writable = write_readiness()
     # Read-only stored metadata is used only for an explicitly absent exact artifact.
     record = next((r for r in catalog_snapshot.get('models', []) if r['catalog_id'] == catalog_id), None)
     fit = None
-    if record and record.get('installed_match', {}).get('match_status') == 'not_installed':
+    status = record.get('installed_match', {}).get('match_status') if record else None
+    # An update is judged by the build it installs, not the older one on disk.
+    if status == 'not_installed' or (allow_update and status == 'revision_mismatch'):
         fit = saved_fit(record, fit_snapshot)
         if fit:
-            fit_snapshot = dict(fit_snapshot, models=[*fit_snapshot.get('models', []),
-                {'provider': record['source']['provider'], 'id': record['source']['upstream_id'], 'fit': fit}])
+            key = (record['source']['provider'], record['source']['upstream_id'])
+            others = [m for m in fit_snapshot.get('models', []) if not (isinstance(m, dict) and (m.get('provider'), m.get('id')) == key)]
+            fit_snapshot = dict(fit_snapshot, models=[*others, {'provider': key[0], 'id': key[1], 'fit': fit}])
     result = build_preflight(catalog_snapshot, fit_snapshot, catalog_id, disk, writable,
-                             provider_version=provider_version)
+                             provider_version=provider_version, allow_update=allow_update)
     if result:
         result['readiness_evidence'] = 'audited_systemd_preset_process_identity_owner_permissions' if writable is True else 'unproven_or_not_writable'
-        result['fit_evidence'] = 'revision_bound_local_metadata' if record and record.get('installed_match', {}).get('match_status') == 'not_installed' else 'installed_provider_metadata'
+        result['fit_evidence'] = 'revision_bound_local_metadata' if status == 'not_installed' or fit else 'installed_provider_metadata'
         # The same estimate the fit state came from, so the UI can explain it.
         result['fit_estimate'] = ({'rating': fit.get('rating'), 'recommended_context': fit.get('recommended_context'),
                                    'source': 'catalog_metadata_estimate'} if isinstance(fit, dict) else None)

@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 import ollama_acquisition as adapter
-from acquisition_lifecycle import AcquisitionLifecycle, LifecycleError, frozen_descriptor
+from acquisition_lifecycle import AcquisitionLifecycle, LifecycleError, SimulatedAdapter, frozen_descriptor
 from test_acquisition_lifecycle import fixture
 from acquisition_fit import saved_fit
 import ollama_readiness
@@ -106,6 +106,46 @@ class RealAdapterTests(unittest.TestCase):
         identifier = store.propose(self.preflight)['id']
         with self.assertRaisesRegex(LifecycleError, 'cancel_unsupported'): store.cancel(identifier)
         self.assertEqual(store.get(identifier)['state'], 'PROPOSED')
+
+    def test_M2_update_replaces_only_the_approved_older_build(self):
+        for installed, pulls in (('b' * 64, True), ('c' * 64, False), (None, False)):
+            with self.subTest(installed=installed):
+                job, conn = adapter.OllamaAcquisitionAdapter(), self.stream([{'status': 'success'}])
+                job.replace_revision = 'b' * 64
+                with patch.object(adapter, 'connection', return_value=conn), patch.object(adapter, 'inspect_artifact', return_value={'state': 'mismatch'}), \
+                     patch.object(adapter, 'write_readiness', return_value=True), patch.object(adapter, 'installed_revision', return_value=installed):
+                    job._pull(self.descriptor)
+                self.assertEqual(conn.request.called, pulls)
+                self.assertEqual(job.observe_progress()['state'], 'complete' if pulls else 'failed')
+        # A plain install never replaces anything.
+        job, conn = self.pull([{'status': 'success'}], existing='mismatch')
+        conn.request.assert_not_called()
+
+    def test_M3_lifecycle_hands_the_approved_build_to_the_adapter(self):
+        seen = []
+        class Recording(adapter.OllamaAcquisitionAdapter):
+            def begin(self, descriptor): seen.append(self.replace_revision)
+        for intent, expected in (('update', 'b' * 64), (None, None)):
+            preflight = dict(self.preflight, replaces_revision='b' * 64)
+            if intent: preflight['intent'] = intent
+            store = AcquisitionLifecycle(Path(self.temp.name) / f'{intent}.json', adapter_factory=Recording)
+            identifier = store.propose(preflight)['id']
+            store.decide(identifier, 'approved', lambda _: preflight)
+            store.advance(identifier)
+            self.assertEqual(seen[-1], expected)
+
+    def test_M4_update_after_an_earlier_install_of_the_same_build(self):
+        # Run 8: the VM installed this build once; later the model on disk changed. The
+        # update must not be refused as a repeat of that completed install.
+        store = AcquisitionLifecycle(Path(self.temp.name) / 'repeat.json', adapter_factory=SimulatedAdapter)
+        first = store.propose(self.preflight)['id']
+        store.decide(first, 'approved', lambda _: self.preflight)
+        while store.get(first)['state'] not in ('INSTALLED', 'FAILED'): store.advance(first)
+        self.assertEqual(store.get(first)['state'], 'INSTALLED')
+        repeat = dict(self.preflight, inventory_state='INSTALLED_DIFFERENT_REVISION')
+        with self.assertRaisesRegex(LifecycleError, 'acquisition_already_completed'): store.propose(repeat)
+        update = dict(repeat, intent='update', replaces_revision='b' * 64)
+        self.assertEqual(store.propose(update)['state'], 'PROPOSED')
 
     def test_M_exact_installed_no_pull(self):
         job, conn = self.pull([], existing='exact')

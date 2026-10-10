@@ -262,6 +262,50 @@ def body(handler: BaseHTTPRequestHandler) -> dict[str, Any] | None:
     try:
         value=json.loads(handler.rfile.read(size).decode()); return value if isinstance(value,dict) else None
     except (UnicodeDecodeError,ValueError): return None
+# --- owner-only loopback (identical in novad, nova-actions and nova-system-tools) ---
+# Every local account can connect to 127.0.0.1, so a loopback port alone does not say
+# who is asking (Omarchy marketplace review, 2026-10-10). Before any request is read,
+# the kernel's socket table names the account that owns the client end of the
+# connection; anything but this desktop user, or an answer that is not exactly one
+# account, is refused by closing the connection.
+TCP_TABLES = ("/proc/net/tcp", "/proc/net/tcp6")
+
+
+def _proc_address(text):
+    import ipaddress, sys
+    host, port = text.split(":")
+    raw = bytes.fromhex(host)
+    if sys.byteorder == "little": raw = b"".join(raw[i:i + 4][::-1] for i in range(0, len(raw), 4))
+    address = ipaddress.ip_address(raw)
+    if address.version == 6 and address.ipv4_mapped: address = address.ipv4_mapped
+    return str(address), int(port, 16)
+
+
+def peer_uid(client, server, tables=TCP_TABLES):
+    """UID owning the established connection client -> server, or None unless exactly one."""
+    owners = set()
+    for table in tables:
+        try:
+            with open(table) as file: rows = file.read().splitlines()[1:]
+        except OSError: continue
+        for row in rows:
+            fields = row.split()
+            try:
+                if fields[3] != "01": continue  # ESTABLISHED
+                if _proc_address(fields[1]) == (client[0], client[1]) and _proc_address(fields[2]) == (server[0], server[1]):
+                    owners.add(int(fields[7]))
+            except (IndexError, ValueError): continue
+    return owners.pop() if len(owners) == 1 else None
+
+
+class OwnerOnlyHTTPServer(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def verify_request(self, request, client_address):
+        return peer_uid(client_address, self.server_address[:2]) == os.getuid()
+# --- end owner-only loopback ---
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version="nova-actions/0.6.0"
     def log_message(self,*_: Any)->None:return
@@ -290,4 +334,4 @@ class Handler(BaseHTTPRequestHandler):
         audit("execution_completed",action=action,application_id=result.get("application_id", snapshot.get("application_id") if action=="open_known_application" else None),workspace=result.get("workspace", snapshot.get("workspace") if action=="open_known_application" else None),status=result.get("status"),error=result.get("error"));self.reply(HTTPStatus.OK if result.get("status") in ("success","scheduled","dispatched") else HTTPStatus.CONFLICT,result)
     def do_PUT(self)->None:self.reply(HTTPStatus.METHOD_NOT_ALLOWED,{"error":"post_only"})
     def do_DELETE(self)->None:self.do_PUT()
-if __name__=="__main__":ThreadingHTTPServer((HOST,PORT),Handler).serve_forever()
+if __name__=="__main__":OwnerOnlyHTTPServer((HOST,PORT),Handler).serve_forever()

@@ -34,7 +34,7 @@ PANEL_IDENTITY_MARKER = 'readonly property string packagedUiIdentity: "__NOVA_PA
 RUNTIME_FILES = (
     "novad/acquisition.py", "novad/acquisition_fit.py", "novad/acquisition_integration.py",
     "novad/acquisition_lifecycle.py", "novad/catalog.py", "novad/catalog_observability.py",
-    "novad/catalog_drift.py", "novad/catalog_repins.py",
+    "novad/catalog_drift.py", "novad/catalog_repins.py", "novad/model_updates.py",
     "novad/chat_sessions.py",
     "novad/evidence.py", "novad/hardware.py", "novad/model_fit.py", "novad/ollama_acquisition.py",
     "novad/ollama_readiness.py", "novad/providers.py", "novad/recommendation.py",

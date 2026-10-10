@@ -1274,6 +1274,7 @@ Ui.Panel {
   }
   function refreshCatalog() {
     if (acceptancePreview) return
+    refreshModelUpdates(false)  // novad only asks Ollama when the weekly check is due
     catalogSummary = "CATALOG // CHECKING"
     var xhr = new XMLHttpRequest()
     xhr.onreadystatechange = function() {
@@ -1582,6 +1583,16 @@ Ui.Panel {
     var state = item.state || "UNKNOWN"
     var descriptor = item.preflight && item.preflight.descriptor
     var target = (descriptor && descriptor.catalog_id ? catalogDisplayName(descriptor.catalog_id) : String((descriptor && descriptor.artifact_id) || "MODEL")).toUpperCase()
+    if (item.preflight && item.preflight.intent === "update") {
+      if (state === "INSTALLED") return item.verification === "matched" ? "UPDATED AND CHECKED // " + target : "UPDATED // " + target + " // CHECK NOT CONFIRMED"
+      if (state === "FAILED") return "UPDATE FAILED // " + target
+      if (state === "RECOVERY_REQUIRED") return "UPDATE INTERRUPTED // " + target + " // RECOVERY REVIEW REQUIRED"
+      if (state === "REJECTED") return "UPDATE DECLINED // " + target
+      if (state === "EXPIRED") return "UPDATE APPROVAL EXPIRED // " + target
+      if (state === "VERIFYING") return "CHECKING THE UPDATE // " + target
+      if (state === "APPROVED") return "UPDATE APPROVED // " + target + " // STARTING"
+      return "UPDATING // " + target + " // " + state
+    }
     if (state === "INSTALLED") return item.verification === "matched"
       ? "INSTALLED AND CHECKED // " + target + " // NOT IN USE YET"
       : "INSTALLED // " + target + " // CHECK NOT CONFIRMED // NOT IN USE YET"
@@ -1596,6 +1607,13 @@ Ui.Panel {
   }
   function acquisitionTerminalFeedback(item) {
     if (!item) return "Installation status is unavailable."
+    if (item.preflight && item.preflight.intent === "update") {
+      if (item.state === "INSTALLED") return item.verification === "matched"
+        ? "Update finished and checked. The newer build is used from the model's next load."
+        : "Update finished, but NOVA couldn't confirm its check."
+      if (item.state === "REJECTED" || item.state === "EXPIRED") return "Update not started. Your current build is unchanged."
+      return "The update didn't finish. Check the model's card before trying again."
+    }
     if (item.state === "INSTALLED") return item.verification === "matched"
       ? "Download finished and checked. Choose LOAD AND USE to start it."
       : "Download finished, but NOVA couldn't confirm its check. Nothing was started."
@@ -1626,7 +1644,7 @@ Ui.Panel {
     if (["INSTALLED", "FAILED", "RECOVERY_REQUIRED", "CANCELLED", "REJECTED", "EXPIRED"].indexOf(state) >= 0) {
       approvalFeedback = acquisitionTerminalFeedback(item)
       acquisitionTimer.stop(); trackedAcquisitionId = ""
-      if (!acceptancePreview) { refreshModels(); refreshCatalog(); refreshOnboarding() }
+      if (!acceptancePreview) { refreshModels(); refreshCatalog(); refreshOnboarding(); refreshModelUpdates(false) }
     }
   }
   function refreshTrackedAcquisition() {
@@ -1802,6 +1820,139 @@ Ui.Panel {
     }
     xhr.open("POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/acquisition/models/" + encodeURIComponent(catalogId) + "/propose")
     xhr.timeout = 45000  // novad first checks with Ollama whether the tag was re-published
+    xhr.send()
+  }
+  // 0.14.0 model updates (mock previews/model-updates, Konstantin 2026-10-10): novad checks
+  // installed models against Ollama's library once a week or on REFRESH. NOVA never
+  // downloads on its own: UPDATE opens the normal approval card for the newer build.
+  property var modelUpdates: ({})          // installed model id -> novad's result
+  property int modelUpdatesAvailable: 0
+  property bool modelUpdatesChecking: false
+  property string modelUpdateBusy: ""      // catalog id being proposed, skipped or shown again
+  function applyModelUpdates(payload) {
+    modelUpdates = payload && payload.models ? payload.models : ({})
+    modelUpdatesAvailable = payload && typeof payload.available === "number" ? payload.available : 0
+    modelUpdatesChecking = !!(payload && payload.checking)
+    if (modelUpdatesChecking) modelUpdatesTimer.restart()
+  }
+  function refreshModelUpdates(force) {
+    if (acceptancePreview) return
+    var xhr = new XMLHttpRequest()
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState !== XMLHttpRequest.DONE) return
+      if (xhr.status !== 200 && xhr.status !== 202) { root.modelUpdatesChecking = false; return }
+      try { root.applyModelUpdates(JSON.parse(xhr.responseText)) } catch (error) { root.modelUpdatesChecking = false }
+    }
+    xhr.open(force ? "POST" : "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + (force ? "/models/updates/check" : "/models/updates"))
+    xhr.timeout = 5000
+    xhr.send()
+  }
+  Timer { id: modelUpdatesTimer; interval: 3000; onTriggered: root.refreshModelUpdates(false) }
+  function modelUpdateFor(modelData) {
+    return modelData && typeof modelData.id === "string" && modelUpdates[modelData.id] ? modelUpdates[modelData.id] : null
+  }
+  function modelUpdateOffered(modelData) {
+    var update = modelUpdateFor(modelData)
+    return !!(update && update.status === "available" && !update.skipped)
+  }
+  // Sizes of a few KB must not read as "0.0 GiB".
+  function transferLabel(value) {
+    if (typeof value !== "number" || !isFinite(value)) return "unknown"
+    if (value < 1048576) return Math.max(1, Math.round(value / 1024)) + " KB"
+    if (value < 1073741824) return Math.round(value / 1048576) + " MB"
+    return bytesLabel(value)
+  }
+  function modelUpdateWhat(update) {
+    return update && update.kind === "settings"
+      ? "Ollama has a newer build: the chat template and settings changed, the model weights are the same."
+      : "Ollama has a newer build with new model weights (the same model, retrained or requantized)."
+  }
+  function modelUpdateFacts(update) {
+    if (!update) return ""
+    var download = (update.download_exact ? "about " : "up to ") + transferLabel(update.download_bytes)
+    var sizes = typeof update.size_before === "number" && typeof update.size_after === "number"
+      && Math.abs(update.size_after - update.size_before) >= 52428800
+      ? " · SIZE " + bytesLabel(update.size_before) + " → " + bytesLabel(update.size_after) : ""
+    return "DOWNLOAD " + download + sizes
+  }
+  function modelUpdateQuietLine(modelData) {
+    var update = modelUpdateFor(modelData)
+    if (!update) return ""
+    if (update.status === "changed_too_much") return "Ollama changed this model a lot (a different size or format), so NOVA doesn't offer it as an update. Your copy keeps working; a NOVA update will list the new one."
+    if (update.status === "gone") return "Ollama no longer offers this model. Your copy keeps working."
+    if (update.status === "available" && update.skipped) return "Newer build skipped."
+    return ""
+  }
+  function modelUpdateInProgress(modelData) {
+    // The repinned catalog row no longer matches the older build on disk, so use the update's own id.
+    var update = modelUpdateFor(modelData)
+    var item = update && update.catalog_id ? acquisitionFor(update.catalog_id) : null
+    return !!(item && item.preflight && item.preflight.intent === "update"
+              && ["APPROVED", "STARTING", "DOWNLOADING", "VERIFYING"].indexOf(item.state) >= 0)
+  }
+  function setModelUpdateSkipped(modelData, skip) {
+    var update = modelUpdateFor(modelData)
+    if (!update || !update.catalog_id || modelUpdateBusy !== "") return
+    modelUpdateBusy = update.catalog_id
+    var xhr = new XMLHttpRequest()
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState !== XMLHttpRequest.DONE) return
+      root.modelUpdateBusy = ""
+      if (xhr.status === 200) { try { root.applyModelUpdates(JSON.parse(xhr.responseText)) } catch (error) { } }
+    }
+    xhr.open("POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/models/updates/" + encodeURIComponent(update.catalog_id) + (skip ? "/skip" : "/unskip"))
+    xhr.timeout = 5000
+    xhr.send()
+  }
+  // Run 8: a bare "UPDATE NOT AVAILABLE" hid the reason; name it in plain words.
+  function modelUpdateRefusal(payload) {
+    var words = { acquisition_conflict: "ANOTHER DOWNLOAD OF THIS MODEL IS RUNNING", INSUFFICIENT_STORAGE: "NOT ENOUGH FREE DISK SPACE",
+                  PROVIDER_UNAVAILABLE: "OLLAMA IS NOT RUNNING", PROVIDER_NOT_READY: "OLLAMA IS NOT READY", PROVIDER_TOO_OLD: "OLLAMA IS TOO OLD FOR THIS BUILD",
+                  FIT_POOR: "THE NEWER BUILD WOULD NOT FIT", FIT_UNSUPPORTED: "THE NEWER BUILD WOULD NOT FIT", TIGHT_OPT_IN_REQUIRED: "THE NEWER BUILD FITS ONLY TIGHTLY",
+                  ACQUISITION_CONFLICT: "ANOTHER DOWNLOAD IS RUNNING", NOTHING_TO_UPDATE: "NOTHING TO UPDATE" }
+    var codes = payload && Array.isArray(payload.blockers) && payload.blockers.length ? payload.blockers
+      : (payload && typeof payload.error === "string" ? [payload.error] : [])
+    var known = codes.map(function(code) { return words[code] }).filter(function(text) { return !!text })
+    return known.length ? known.join(" · ") : (codes.length ? String(codes[0]).replace(/_/g, " ").toUpperCase() : "NOVA'S SERVICE DIDN'T ANSWER")
+  }
+  function proposeModelUpdate(modelData) {
+    var update = modelUpdateFor(modelData)
+    if (!update || !update.catalog_id || pendingApproval !== null || chatBusy || modelTransitionActive
+        || trackedAcquisitionId !== "" || modelUpdateBusy !== "") return
+    var name = modelPlainName(modelData.id)
+    modelUpdateBusy = update.catalog_id
+    acquisitionStatus = "PREPARING UPDATE // " + name.toUpperCase()
+    var xhr = new XMLHttpRequest()
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState !== XMLHttpRequest.DONE) return
+      root.modelUpdateBusy = ""
+      try {
+        var payload = JSON.parse(xhr.responseText)
+        if (xhr.status !== 201 || !payload.id || !payload.preflight || !payload.preflight.descriptor) {
+          acquisitionStatus = payload.status === "NO_OP_ALREADY_INSTALLED" ? "ALREADY UP TO DATE // " + name.toUpperCase()
+            : payload.error === "model_gone_upstream" ? "UPDATE NOT AVAILABLE · OLLAMA NO LONGER OFFERS THIS MODEL"
+            : payload.error === "model_changed_too_much_upstream" ? "UPDATE NOT AVAILABLE · OLLAMA CHANGED THIS MODEL; WAIT FOR A NOVA UPDATE"
+            : "UPDATE NOT AVAILABLE · " + modelUpdateRefusal(payload)
+          refreshCatalog(); refreshModelUpdates(true); return
+        }
+        var detail = payload.preflight
+        beginApproval({ id: payload.id, action: "acquire_catalog_model", acquisition: true, update: true,
+          expiresAt: payload.expires_at,
+          summary: "Update " + name + " to Ollama's newer build",
+          whatChanged: update.kind === "settings" ? "chat template and settings (same weights)" : "new model weights",
+          download: (update.download_exact ? "about " : "up to ") + transferLabel(update.download_bytes),
+          provider: detail.descriptor.provider || "UNKNOWN", size: detail.descriptor.expected_artifact_size,
+          requiredSpace: detail.disk && detail.disk.total_required, availableSpace: detail.disk && detail.disk.free_space,
+          fit: detail.fit_state || "UNKNOWN", trust: detail.trust_basis || "UNVERIFIED",
+          provenance: provenancePlain(detail.descriptor.provenance_summary),
+          impact: "Ollama downloads the newer build and replaces the one you have; NOVA checks that it is exactly the build shown here. "
+            + "Until it finishes, the current build keeps working. Your chats are not affected." })
+        if (payload.upstream && payload.upstream.status === "repinned") refreshCatalog()
+        acquisitionStatus = "AWAITING UPDATE APPROVAL // " + name.toUpperCase()
+      } catch (error) { acquisitionStatus = "UPDATE NOT AVAILABLE" }
+    }
+    xhr.open("POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/acquisition/models/" + encodeURIComponent(update.catalog_id) + "/propose-update")
+    xhr.timeout = 45000  // novad re-reads Ollama's library before proposing
     xhr.send()
   }
   // REC-01: attributed, low-confidence suggestions for not-yet-installed models.
@@ -2571,13 +2722,13 @@ Ui.Panel {
         onboardingState = "ACQUISITION_IN_PROGRESS"
         onboardingActions = []
         onboardingCodes = ["ACQUISITION_APPROVED"]
-        acquisitionStatus = "INSTALLING // APPROVED"
+        acquisitionStatus = next.update ? "UPDATING // APPROVED" : "INSTALLING // APPROVED"
         approvalFeedback = installCheckingFeedback
         acquisitionTimer.restart()
         refreshTrackedAcquisition()
       } else {
-        acquisitionStatus = "INSTALL DECLINED // NO DOWNLOAD STARTED"
-        approvalFeedback = "Installation proposal declined. No download started."
+        acquisitionStatus = next.update ? "UPDATE DECLINED // YOUR CURRENT BUILD IS UNCHANGED" : "INSTALL DECLINED // NO DOWNLOAD STARTED"
+        approvalFeedback = next.update ? "Update declined. Nothing was downloaded." : "Installation proposal declined. No download started."
         applyStreamState("idle", "")
         refreshAcquisitions()
         refreshOnboarding()
@@ -3711,7 +3862,8 @@ Ui.Panel {
                   readonly property bool current: root.shownView === modelData.view
                   readonly property string badge: modelData.view === "models" && root.newCatalogIds.length ? root.newCatalogIds.length + " NEW" : ""
                   readonly property bool warning: modelData.view === "machine" && root.machineWarning
-                  implicitWidth: tabLabel.implicitWidth + (badge ? tabBadge.width + Style.spacing.xs : 0) + (warning ? Style.space(10) : 0) + 2 * Style.space(14)
+                  readonly property bool updates: modelData.view === "models" && root.modelUpdatesAvailable > 0
+                  implicitWidth: tabLabel.implicitWidth + (badge ? tabBadge.width + Style.spacing.xs : 0) + (warning || updates ? Style.space(10) : 0) + 2 * Style.space(14)
                   implicitHeight: tabLabel.implicitHeight + 2 * Style.spacing.sm
                   Text {
                     id: tabLabel
@@ -3732,6 +3884,12 @@ Ui.Panel {
                     visible: tab.warning
                     anchors.left: tabLabel.right; anchors.leftMargin: Style.space(5); anchors.verticalCenter: tabLabel.verticalCenter
                     width: Style.space(6); height: width; radius: width / 2; color: Color.urgent
+                  }
+                  Rectangle {
+                    objectName: "modelsUpdateDot"
+                    visible: tab.updates
+                    anchors.left: tab.badge ? tabBadge.right : tabLabel.right; anchors.leftMargin: Style.space(5); anchors.verticalCenter: tabLabel.verticalCenter
+                    width: Style.space(5); height: width; radius: width / 2; color: root.accent
                   }
                   Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 2; color: root.accent; visible: tab.current }
                   MouseArea {
@@ -4405,7 +4563,7 @@ Ui.Panel {
                 interactive: contentHeight > height
                 Column {
                 id: approvalColumn; width: parent.width; spacing: Style.spacing.xs
-                Text { objectName: "approvalTitle"; text: root.pendingApproval && root.pendingApproval.recovery ? "RECOVERY REVIEW" : (root.pendingApproval && root.pendingApproval.removal ? "DELETE APPROVAL" : (root.pendingApproval && root.pendingApproval.acquisition ? "INSTALL APPROVAL" : "ACTION REQUEST")); color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.2 }
+                Text { objectName: "approvalTitle"; text: root.pendingApproval && root.pendingApproval.recovery ? "RECOVERY REVIEW" : (root.pendingApproval && root.pendingApproval.removal ? "DELETE APPROVAL" : (root.pendingApproval && root.pendingApproval.update ? "UPDATE APPROVAL" : (root.pendingApproval && root.pendingApproval.acquisition ? "INSTALL APPROVAL" : "ACTION REQUEST"))); color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.2 }
                 Text { text: root.pendingApproval ? root.pendingApproval.summary : "ACTION"; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; font.bold: true }
                 Text { visible: !!(root.pendingApproval && root.pendingApproval.recovery === true); width: parent.width; text: root.recoveryAssessmentText(); textFormat: Text.PlainText; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; wrapMode: Text.Wrap }
                 Text { visible: !!(root.pendingApproval && root.pendingApproval.recovery === true); width: parent.width; text: "Check other terminals, model clients and automation for downloads. Empty model residency does not establish download inactivity. Do not confirm if uncertain."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
@@ -4418,7 +4576,7 @@ Ui.Panel {
                 // UX Phase 1: what, how big and whether it fits come first; every fact of the
                 // frozen preflight stays one click away (disclosed, not removed).
                 Text { objectName: "approvalSummaryLine"; visible: !!(root.pendingApproval && (root.pendingApproval.acquisition || root.pendingApproval.removal)); width: parent.width; wrapMode: Text.Wrap
-                       text: !root.pendingApproval ? "" : root.pendingApproval.removal ? "Frees up to " + root.bytesLabel(root.pendingApproval.size) + " (less if another model shares its files) · you can download it again later" : root.bytesLabel(root.pendingApproval.size) + " on disk · " + root.approvalFitShort(root.pendingApproval.fit) + " · " + root.bytesLabel(root.pendingApproval.availableSpace) + " free"
+                       text: !root.pendingApproval ? "" : root.pendingApproval.removal ? "Frees up to " + root.bytesLabel(root.pendingApproval.size) + " (less if another model shares its files) · you can download it again later" : root.pendingApproval.update ? "What changed: " + root.pendingApproval.whatChanged + " · download " + root.pendingApproval.download + " · " + root.approvalFitShort(root.pendingApproval.fit) + " · " + root.bytesLabel(root.pendingApproval.availableSpace) + " free" : root.bytesLabel(root.pendingApproval.size) + " on disk · " + root.approvalFitShort(root.pendingApproval.fit) + " · " + root.bytesLabel(root.pendingApproval.availableSpace) + " free"
                              + (root.pendingApproval.trust === "user_requested" ? " · not in NOVA's catalog" : "")
                        color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                 Text { objectName: "approvalDetailsToggle"; visible: !!(root.pendingApproval && root.pendingApproval.acquisition); text: root.approvalDetailsOpen ? "[ HIDE DETAILS ]" : "[ DETAILS ]"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.7
@@ -4673,9 +4831,9 @@ Ui.Panel {
                   width: parent.width
                   height: Math.max(installedTitle.implicitHeight, refreshInstalledRow.height)
                   Text { id: installedTitle; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; text: "INSTALLED · " + root.discoveredModels.length; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.4 }
-                  Text { anchors.left: installedTitle.right; anchors.leftMargin: Style.spacing.sm; anchors.verticalCenter: parent.verticalCenter; text: "on this computer"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                  Text { anchors.left: installedTitle.right; anchors.leftMargin: Style.spacing.sm; anchors.verticalCenter: parent.verticalCenter; text: "on this computer" + (root.modelUpdatesAvailable > 0 ? " · " + root.modelUpdatesAvailable + (root.modelUpdatesAvailable === 1 ? " update" : " updates") : ""); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                   Item { id: refreshInstalledRow; anchors.right: parent.right; width: childrenRect.width; height: childrenRect.height
-                    CompactModelButton { objectName: "refreshInstalledModelsButton"; text: "REFRESH"; tooltipText: "Re-read the provider's installed models"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: true; enabled: !root.installedModelsLoading; Accessible.name: "Refresh installed models"; onClicked: root.refreshModels() }
+                    CompactModelButton { objectName: "refreshInstalledModelsButton"; text: root.modelUpdatesChecking ? "CHECKING…" : "REFRESH"; tooltipText: "Re-read the installed models and ask Ollama's library for newer builds"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: true; enabled: !root.installedModelsLoading; Accessible.name: "Refresh installed models and check for updates"; onClicked: { root.refreshModels(); root.refreshModelUpdates(true) } }
                   }
                 }
                 Text { width: parent.width; visible: root.installedModelsLoading; text: "REFRESHING INSTALLED INVENTORY…"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 1 }
@@ -4705,7 +4863,7 @@ Ui.Panel {
                       Item {
                         width: parent.width
                         height: Math.max(installedModelId.height, inUseTag.height, installedModelSize.implicitHeight)
-                        readonly property real nameRoom: width - (inUseTag.visible ? inUseTag.width + Style.spacing.sm : 0) - installedModelSize.implicitWidth - Style.spacing.sm
+                        readonly property real nameRoom: width - (inUseTag.visible ? inUseTag.width + Style.spacing.sm : 0) - (updateTag.visible ? updateTag.width + Style.spacing.sm : 0) - installedModelSize.implicitWidth - Style.spacing.sm
                         TextMetrics { id: installedNameMetrics; font: installedModelId.font; text: installedModelId.text }
                         Text { id: installedModelId; objectName: "installedModelId"; width: Math.min(installedNameMetrics.advanceWidth + 2, Math.max(Style.space(60), parent.nameRoom)); wrapMode: Text.Wrap; font.bold: true; text: root.modelPlainName(modelData.id); color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; font.letterSpacing: 0.4 }
                         Rectangle {
@@ -4715,6 +4873,15 @@ Ui.Panel {
                           width: inUseText.implicitWidth + Style.space(8); height: inUseText.implicitHeight + Style.space(2)
                           color: "transparent"; border.width: 1; border.color: root.accent
                           Text { id: inUseText; anchors.centerIn: parent; text: "IN USE"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2; font.bold: true; font.letterSpacing: 1 }
+                        }
+                        Rectangle {
+                          id: updateTag
+                          objectName: "modelUpdateTag"
+                          visible: root.modelUpdateOffered(modelData) || root.modelUpdateInProgress(modelData)
+                          anchors.left: inUseTag.visible ? inUseTag.right : installedModelId.right; anchors.leftMargin: Style.spacing.sm; y: Style.space(2)
+                          width: updateTagText.implicitWidth + Style.space(8); height: updateTagText.implicitHeight + Style.space(2)
+                          color: "transparent"; border.width: 1; border.color: root.accent
+                          Text { id: updateTagText; anchors.centerIn: parent; text: "UPDATE"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2; font.bold: true; font.letterSpacing: 1 }
                         }
                         Text { id: installedModelSize; anchors.right: parent.right; y: Style.space(1); text: modelData.metadata && typeof modelData.metadata.size_bytes === "number" ? root.bytesLabel(modelData.metadata.size_bytes) : ""; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                       }
@@ -4825,6 +4992,91 @@ Ui.Panel {
                           onClicked: root.proposeModelRemoval(modelData)
                         }
                       }
+                      }
+                      // 0.14.0: Ollama's newer build of this model, offered only after the user asks.
+                      Column {
+                        id: modelUpdateBlock
+                        objectName: "modelUpdateBlock"
+                        readonly property var update: root.modelUpdateFor(modelData)
+                        readonly property bool offered: root.modelUpdateOffered(modelData)
+                        readonly property bool updating: root.modelUpdateInProgress(modelData)
+                        readonly property string quiet: root.modelUpdateQuietLine(modelData)
+                        visible: offered || updating || quiet !== ""
+                        width: parent.width
+                        spacing: Style.spacing.xs
+                        topPadding: Style.spacing.xs
+                        Rectangle { width: parent.width; height: 1; color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.14) }
+                        Text {
+                          objectName: "modelUpdateWhat"
+                          visible: modelUpdateBlock.offered && !modelUpdateBlock.updating
+                          width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
+                          text: root.modelUpdateWhat(modelUpdateBlock.update)
+                          color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption
+                        }
+                        Text {
+                          objectName: "modelUpdateFacts"
+                          visible: modelUpdateBlock.offered && !modelUpdateBlock.updating
+                          width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
+                          text: root.modelUpdateFacts(modelUpdateBlock.update)
+                          color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.55); font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.6
+                        }
+                        Text {
+                          objectName: "modelUpdateProgress"
+                          visible: modelUpdateBlock.updating
+                          width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
+                          readonly property var blob: root.acquisitionBlobProgress({ catalog_id: modelUpdateBlock.update ? modelUpdateBlock.update.catalog_id : "" })
+                          text: "Updating to the newer build" + (blob.visible && blob.determinate ? " · " + blob.detail : "…") + " The current build keeps working until this finishes."
+                          color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption
+                        }
+                        Row {
+                          visible: modelUpdateBlock.offered && !modelUpdateBlock.updating
+                          spacing: Style.spacing.xs
+                          topPadding: Style.space(2)
+                          CompactModelButton {
+                            objectName: "modelUpdateButton"
+                            text: root.modelUpdateBusy !== "" && modelUpdateBlock.update && root.modelUpdateBusy === modelUpdateBlock.update.catalog_id ? "CHECKING…" : "UPDATE"
+                            tooltipText: "Review this update; nothing downloads until you approve"
+                            foreground: root.foreground; accent: root.accent; bordered: true; focusable: visible
+                            selected: true
+                            enabled: visible && root.modelUpdateBusy === "" && root.pendingApproval === null && !root.chatBusy
+                                     && !root.modelTransitionActive && root.trackedAcquisitionId === ""
+                            Accessible.name: "Update " + modelData.id
+                            onClicked: root.proposeModelUpdate(modelData)
+                          }
+                          Text {
+                            objectName: "modelUpdateSkip"
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "skip this version"; font.underline: true
+                            color: skipArea.containsMouse ? root.foreground : root.muted
+                            font.family: root.fontFamily; font.pixelSize: Style.font.caption
+                            MouseArea { id: skipArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                        Accessible.role: Accessible.Button; Accessible.name: "Skip this version of " + modelData.id
+                                        onClicked: root.setModelUpdateSkipped(modelData, true) }
+                          }
+                        }
+                        Row {
+                          visible: modelUpdateBlock.quiet !== "" && !modelUpdateBlock.updating
+                          width: parent.width
+                          spacing: Style.spacing.xs
+                          Text {
+                            objectName: "modelUpdateQuiet"
+                            width: Math.min(implicitWidth, parent.width - (showAgain.visible ? showAgain.width + Style.spacing.xs : 0))
+                            wrapMode: Text.Wrap; textFormat: Text.PlainText
+                            text: modelUpdateBlock.quiet
+                            color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.55); font.family: root.fontFamily; font.pixelSize: Style.font.caption
+                          }
+                          Text {
+                            id: showAgain
+                            objectName: "modelUpdateShowAgain"
+                            visible: !!(modelUpdateBlock.update && modelUpdateBlock.update.skipped)
+                            text: "show again"; font.underline: true
+                            color: showAgainArea.containsMouse ? root.foreground : root.muted
+                            font.family: root.fontFamily; font.pixelSize: Style.font.caption
+                            MouseArea { id: showAgainArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                        Accessible.role: Accessible.Button; Accessible.name: "Show the skipped update of " + modelData.id
+                                        onClicked: root.setModelUpdateSkipped(modelData, false) }
+                          }
+                        }
                       }
                       Text {
                         objectName: "removalStatusText"

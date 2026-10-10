@@ -61,6 +61,19 @@ class AcquisitionPreflightTests(unittest.TestCase):
         self.assertEqual(result['status'], 'BLOCKED')
         self.assertIn('REVISION_MISMATCH', result['blockers'])
 
+    def test_D2_update_replaces_only_an_installed_older_build(self):
+        update = acq.PreflightRequest('catalog-v1', allow_update=True)
+        result = self.evaluate(inventory=acq.InventorySnapshot('INSTALLED_DIFFERENT_REVISION', 'b' * 64), request=update)
+        self.assertTrue(result['eligible'])
+        self.assertIn('REPLACES_INSTALLED_REVISION', result['warnings'])
+        # Without the observed older revision there is nothing exact to replace.
+        result = self.evaluate(inventory=acq.InventorySnapshot('INSTALLED_DIFFERENT_REVISION'), request=update)
+        self.assertIn('REVISION_MISMATCH', result['blockers'])
+        self.assertIn('NOTHING_TO_UPDATE', self.evaluate(request=update)['blockers'])
+        self.assertTrue(self.evaluate(inventory=acq.InventorySnapshot('INSTALLED_EXACT', 'a' * 64), request=update)['no_op'])
+        with self.assertRaises(acq.InputError):
+            self.evaluate(request=acq.PreflightRequest('catalog-v1', allow_update='yes'))
+
     def test_E_insufficient_disk_is_blocked(self):
         result = self.evaluate(disk=acq.DiskSnapshot(128 * G, 1 * G))
         self.assertEqual(result['disk']['state'], 'FAIL')

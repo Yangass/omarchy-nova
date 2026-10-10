@@ -75,6 +75,8 @@ class ProviderPreflight:
 class PreflightRequest:
     current_catalog_revision: str | None
     allow_tight: bool = False
+    # Model updates: the user asked to replace an installed older build with the pinned one.
+    allow_update: bool = False
 
 
 def _text(value, name, nullable=False):
@@ -147,6 +149,8 @@ def _validate(descriptor, inventory, fit, disk, provider, request, policy):
     _text(request.current_catalog_revision, 'current_catalog_revision', True)
     if type(request.allow_tight) is not bool:
         raise InputError('allow_tight: expected bool')
+    if type(request.allow_update) is not bool:
+        raise InputError('allow_update: expected bool')
     for name in ('transient_min_bytes', 'safety_min_bytes'):
         value = getattr(policy, name)
         if type(value) is not int or value < 0:
@@ -264,8 +268,12 @@ def evaluate_preflight(descriptor, inventory, fit, disk, provider, request,
         blockers.append('CATALOG_REVISION_UNKNOWN')
         unknown = True
 
-    if inventory.state == 'INSTALLED_DIFFERENT_REVISION':
+    if inventory.state == 'INSTALLED_DIFFERENT_REVISION' and request.allow_update and inventory.observed_revision:
+        warnings.append('REPLACES_INSTALLED_REVISION')
+    elif inventory.state == 'INSTALLED_DIFFERENT_REVISION':
         blockers.append('REVISION_MISMATCH')
+    elif request.allow_update:
+        blockers.append('NOTHING_TO_UPDATE')
     elif inventory.state == 'AMBIGUOUS':
         blockers.append('INVENTORY_AMBIGUOUS')
         unknown = True

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.14.0
+
+- **Security:** NOVA's helpers now serve only your own user account. Before, another
+  account on the same computer could reach them on `127.0.0.1` and, for example, open
+  a configured coding CLI as you. Each connection is now checked against the kernel's
+  socket table and refused unless it is yours (found by the Omarchy marketplace review).
+- **Model updates.** NOVA checks once a week (or on REFRESH) whether Ollama has a newer
+  build of the models you have. The model's card says what changed in plain words
+  (chat template and settings, or new weights) and how much it downloads; a dot on
+  MODELS shows there is something. **UPDATE** goes through the normal approval card;
+  "skip this version" hides that build. A model Ollama changed too much or removed is
+  not offered, and the card says why. Nothing ever updates on its own.
+- NOVA now describes itself as what it is: one place to pick, install, update and
+  manage your local models.
+
 ## 0.13.2
 
 From a fresh-install test that followed this README word for word:

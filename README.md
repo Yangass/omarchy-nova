@@ -1,15 +1,15 @@
 # NOVA
 
-**Run AI models on your own computer, without the terminal.**
+**All your local AI models in one place: picked for your hardware, installed and kept up to date, private and secure, without the terminal.**
 
-NOVA is a plugin for [Omarchy](https://omarchy.org) that takes you from a fresh install to
-chatting with a local AI model in a few clicks. It looks at your hardware, shows you
-which models will actually run well on it, downloads the one you pick, and gives you a
-chat window in your top bar. Your conversations never leave your computer.
+NOVA is a plugin for [Omarchy](https://omarchy.org) that manages the AI models running
+on your own computer. It looks at your hardware and shows which models will actually
+run well on it, installs the one you pick, tells you when Ollama publishes a newer
+build of a model you have, and gives you a private chat in your top bar to use them.
 
 It's made for people who are **new to Omarchy or Linux** and don't want to learn
 `ollama pull`, VRAM math and systemd before trying a local model. If you know all that
-already, NOVA still saves you the guesswork.
+already, NOVA still saves you the guesswork and the upkeep.
 
 ![Models that fit this computer](docs/screenshots/models.png)
 
@@ -21,12 +21,22 @@ already, NOVA still saves you the guesswork.
 - **Installs them for you.** Click **INSTALL**, read the approval card (size, disk
   space left afterwards, fit), click **Approve**. NOVA downloads the model and checks
   that the file is exactly the version it checked. No commands to type.
+- **Keeps them up to date.** Once a week NOVA checks Ollama's library for newer builds
+  of the models you have and says what changed in plain words ("chat template and
+  settings, about 12 KB" or "new model weights, 1.3 GB"). Nothing downloads until you
+  click **UPDATE** and approve; skip a version if you'd rather keep yours.
+- **One place to manage them.** Load, unload, update or delete models, see which one
+  is in memory, and add any model from Ollama's library, each checked against your
+  hardware first.
 - **Gives you a chat in the top bar.** Answers stream in; NOVA knows it's on Omarchy
   and can look up live information about your machine when you ask.
 - **Shows what your machine is doing.** CPU, graphics, memory, disk, network, and which
   model is currently loaded, with one click to free its memory.
 - **Never does anything behind your back.** Every download, deletion, restart or app
   launch waits for your **Approve** on a card that says exactly what will happen.
+- **Secure by design.** NOVA's helpers answer only your own user account, nothing runs
+  as root, and every download is checked against the exact build you approved.
+  [Details below](#privacy-and-security).
 
 <p>
   <img src="docs/screenshots/chat.png" width="32%" alt="CHAT: NOVA describing itself">
@@ -60,8 +70,12 @@ Models take 1–25 GB of disk space each; NOVA tells you the size before you sta
 
 ## Update
 
-NOVA checks once a week for a newer version and shows **UPDATE NOVA** in the panel.
-Click it and press Enter in the window that opens.
+**NOVA itself:** NOVA checks once a week for a newer version and shows **UPDATE NOVA**
+in the panel. Click it and press Enter in the window that opens.
+
+**Your models:** a model with a newer build gets an **UPDATE** tag in **MODELS** (and a
+dot on the tab). Click **UPDATE**, read the approval card, click **Approve**. **REFRESH**
+checks right away instead of waiting for the weekly check.
 
 ## Remove
 
@@ -75,14 +89,25 @@ This removes NOVA's background helpers and the plugin. Ollama and the models you
 downloaded stay, so other tools can keep using them (`ollama list` shows them,
 `ollama rm <name>` deletes one).
 
-## Privacy
+## Privacy and security
 
 Your chats and files stay on your computer. NOVA uses the internet only to:
 
 - read model details from Ollama's library and download the models you approve;
-- check once a week whether a newer NOVA exists.
+- check once a week for newer builds of your models, and for a newer NOVA.
 
-Its helpers listen only on your own computer (`127.0.0.1`). No account, no telemetry.
+No account, no telemetry. And on your computer:
+
+- **Only you.** NOVA's helpers listen only on your own computer (`127.0.0.1`) and serve
+  only your user account: on every connection they ask the Linux kernel who is
+  connecting and refuse anyone else, including other accounts on the same PC.
+- **No root.** NOVA runs as you. The only password prompt is the one-time Ollama install.
+- **You approve every change.** The chat model can suggest an action; only your click on
+  **Approve** runs it, once, before the approval expires.
+- **Exact downloads.** Every model is checked against the exact build shown on its
+  approval card; anything else is reported as a failure.
+- **Safe answers.** Chat formatting is applied after the model's text is escaped, so an
+  answer can't load images, open links or inject anything into the panel.
 
 ## Good to know
 

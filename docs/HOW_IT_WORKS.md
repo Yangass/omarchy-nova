@@ -53,12 +53,32 @@ pinned build; anything else is reported as a failure, never silently accepted.
 **ADD A MODEL** probes any model from Ollama's library the same way and lists it
 as one you added (not curated by NOVA).
 
+**Updates.** Once a week (or when you click REFRESH) novad reads the live manifest of
+every installed model NOVA knows, a few KB each. Same build: nothing to do. A newer
+build of the same model (the guard above) is offered with what changed: if its weights
+layer matches the one on disk, only the chat template or settings changed and the
+download is just the missing small layers; otherwise it's new weights. A different
+model under the same name, or a removed one, is not offered; the card says why.
+UPDATE goes through the same approval and verification as an install, and Ollama may
+replace only the exact older build named in the approved proposal. Until the new build
+is complete, the old one keeps working.
+
 ## Approvals
 
 Anything that changes your computer, including model downloads and deletions,
 service restarts, ending a process and opening apps, goes through an approval card in the
 panel. The model in CHAT can *propose* an action; it cannot approve one. Approvals
 expire, and each new action needs a new approval.
+
+## Only your account
+
+Any account on a computer can connect to `127.0.0.1`, so a loopback port alone doesn't
+say who is asking. All three helpers accept a connection only after the kernel's socket
+table (`/proc/net/tcp`) shows that its client end belongs to the user they run as;
+anything else, including an unclear answer, closes the connection before a request is
+read. nova-actions additionally requires a secret key that only you can read
+(`~/.config/nova/actions.token`, mode 0600). Thanks to the Omarchy marketplace review for
+spotting that an earlier version trusted any local caller.
 
 ## Files NOVA keeps
 
@@ -67,7 +87,7 @@ expire, and each new action needs a new approval.
 | `~/.config/omarchy/plugins/io.github.yangass.nova/` | the plugin (this repository) |
 | `~/.local/share/nova/runtime/` | the installed services |
 | `~/.config/nova/` | settings (selected model, coding CLI profiles, action token) |
-| `~/.local/state/nova/` | install records, panel state, models you added |
+| `~/.local/state/nova/` | install records, panel state, models you added, update check results |
 
 Models themselves are stored by Ollama, not by NOVA.
 
