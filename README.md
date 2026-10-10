@@ -1,5 +1,6 @@
 # NOVA
 *Work in progress*
+
 **Run AI models on your own computer, without the terminal.**
 
 NOVA is a plugin for [Omarchy](https://omarchy.org) that takes you from a fresh install to
