@@ -76,9 +76,16 @@ Any account on a computer can connect to `127.0.0.1`, so a loopback port alone d
 say who is asking. All three helpers accept a connection only after the kernel's socket
 table (`/proc/net/tcp`) shows that its client end belongs to the user they run as;
 anything else, including an unclear answer, closes the connection before a request is
-read. nova-actions additionally requires a secret key that only you can read
-(`~/.config/nova/actions.token`, mode 0600). Thanks to the Omarchy marketplace review for
-spotting that an earlier version trusted any local caller.
+read.
+
+Your own web browser runs as you, so that check alone would let a web page send
+requests to NOVA. Every request therefore also has to be addressed to `127.0.0.1` or
+`localhost` on the helper's own port (which stops DNS rebinding) and carry a key from
+`~/.config/nova/api.token` (mode 0600, created by the helpers). NOVA's panel reads the
+file and sends the key as a header; a web page can neither read the file nor add that
+header to a cross-site request. Only `/health` answers without the key, and it says no
+more than "ok". nova-actions also requires its own key (`~/.config/nova/actions.token`). Thanks to the Omarchy marketplace review for
+spotting that earlier versions trusted any local caller, then any page in your browser.
 
 ## Files NOVA keeps
 

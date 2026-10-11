@@ -12,6 +12,20 @@ Ui.BarWidget {
   // preview host sets them explicitly when rendering isolated fixture states.
   property bool acceptancePreview: false
   property var acceptancePreviewFixture: null
+  // NOVA's API key (~/.config/nova/api.token, 0600, created by the services): the bar
+  // and the panel send it with every request, so a web page can't drive NOVA.
+  property string apiKey: ""
+  FileView {
+    id: apiKeyFile
+    path: root.acceptancePreview ? "" : Quickshell.env("HOME") + "/.config/nova/api.token"
+    printErrors: false
+    watchChanges: true
+    onFileChanged: reload()
+    onLoaded: root.apiKey = text().trim()
+    onLoadFailed: root.apiKey = ""
+  }
+  // Before SET UP NOVA the file doesn't exist yet; look again until it does.
+  Timer { interval: 3000; repeat: true; running: root.apiKey === "" && !root.acceptancePreview; onTriggered: apiKeyFile.reload() }
   readonly property int refreshMs: Math.max(5000, Number(setting("refreshSec", 10)) * 1000)
   property bool online: false
   property bool probing: false
@@ -104,6 +118,7 @@ Ui.BarWidget {
     xhr.onerror = function() { finish(0, "") }
     xhr.ontimeout = function() { finish(0, "") }
     xhr.open("GET", api + path)
+    if (apiKey !== "") xhr.setRequestHeader("X-Nova-Key", apiKey)
     xhr.timeout = 2000
     xhr.send()
   }

@@ -51,6 +51,7 @@ class Handler(BaseHTTPRequestHandler):
                               "gone": {"catalog_id": "llama3-2-1b-q8-0", "model_id": "llama3.2:1b", "status": "gone", "skipped": False}}[mode]
             self.reply(200, view())
         elif self.path == "/models/updates":
+            REQUESTS.setdefault("keys", []).append(self.headers.get("X-Nova-Key"))
             self.reply(200, view())
         elif self.path == "/models":
             self.reply(200, {"models": MODELS, "active_provider": "ollama", "active_model": "qwen3:8b"})
@@ -181,6 +182,13 @@ QML_CHECK = r'''
         check(novaPanel.modelUpdateRefusal({ status: "BLOCKED", blockers: ["INSUFFICIENT_STORAGE"] }) === "NOT ENOUGH FREE DISK SPACE", "storage")
         check(novaPanel.modelUpdateRefusal({ error: "stale_or_blocked_proposal" }) === "STALE OR BLOCKED PROPOSAL", "unknown code")
         check(novaPanel.modelUpdateRefusal(null) === "NOVA'S SERVICE DIDN'T ANSWER", "no answer")
+      })
+      test("every request to NOVA carries the user's key", function() {
+        previewHost.apiKey = "fixture-key-0123456789abcdef0123456789"
+        novaPanel.refreshModelUpdates(false); wait(250)
+        var keys = get("/__requests__").keys
+        check(keys && keys[keys.length - 1] === "fixture-key-0123456789abcdef0123456789", "key not sent: " + JSON.stringify(keys))
+        previewHost.apiKey = ""
       })
       test("REFRESH also asks Ollama's library for newer builds", function() {
         var before = get("/__requests__").checks.length

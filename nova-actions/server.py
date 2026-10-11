@@ -298,8 +298,58 @@ def peer_uid(client, server, tables=TCP_TABLES):
     return owners.pop() if len(owners) == 1 else None
 
 
+# The desktop user's own web browser passes the UID check, so a web page could still
+# send requests (cross-site request forgery) or pose as 127.0.0.1 (DNS rebinding;
+# review, 2026-10-11). Every request must therefore name this service's loopback Host
+# and, except /health, carry the key from a file only this user can read
+# (~/.config/nova/api.token, 0600). Pages can neither read that file nor add the
+# header to a cross-site request without a preflight, which is never answered.
+API_KEY_PATH = os.path.join(os.path.expanduser("~"), ".config", "nova", "api.token")
+API_KEY_HEADER = "X-Nova-Key"
+OPEN_PATHS = ("/health",)
+
+
+def api_key(path=None):
+    """The shared key, created once (0600) by whichever NOVA service starts first."""
+    import secrets
+    path = path or API_KEY_PATH
+    try:
+        with open(path) as file: value = file.read().strip()
+        if len(value) >= 32: return value
+    except FileNotFoundError: pass
+    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+    try:
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "w") as file: file.write(secrets.token_urlsafe(32) + "\n")
+    except FileExistsError: pass
+    with open(path) as file: value = file.read().strip()
+    if len(value) < 32: raise RuntimeError("NOVA API key unavailable")
+    return value
+
+
+def _guarded(handler):
+    class Guarded(handler):
+        def parse_request(self):
+            from hmac import compare_digest
+            from urllib.parse import urlsplit
+            if not super().parse_request(): return False
+            port = self.server.server_address[1]
+            if self.headers.get("Host") not in (f"127.0.0.1:{port}", f"localhost:{port}"):
+                self.send_error(403, "Unexpected Host"); return False
+            if urlsplit(self.path).path not in OPEN_PATHS and not compare_digest(
+                    (self.headers.get(API_KEY_HEADER) or "").encode(), api_key().encode()):
+                self.send_error(401, "NOVA key required"); return False
+            return True
+    Guarded.__name__ = Guarded.__qualname__ = handler.__name__
+    return Guarded
+
+
 class OwnerOnlyHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
+
+    def __init__(self, address, handler):
+        api_key()  # create the key before the first request
+        super().__init__(address, _guarded(handler))
 
     def verify_request(self, request, client_address):
         return peer_uid(client_address, self.server_address[:2]) == os.getuid()

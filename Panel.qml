@@ -503,7 +503,7 @@ Ui.Panel {
       if (status === "removed" || status === "not_found") root.refreshCatalog()
     }
     try {
-      xhr.open("DELETE", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/models/requested/" + encodeURIComponent(modelData.catalog_id))
+      root.openNova(xhr, "DELETE", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/models/requested/" + encodeURIComponent(modelData.catalog_id))
       xhr.timeout = 15000
       xhr.send()
     } catch (error) { addModelBusy = false; addModelFailed = true; addModelStatus = "NOVA's background service didn't answer. Try again in a moment." }
@@ -536,7 +536,7 @@ Ui.Panel {
       }
     }
     try {
-      xhr.open("POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/models/requested")
+      root.openNova(xhr, "POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/models/requested")
       xhr.setRequestHeader("Content-Type", "application/json")
       xhr.timeout = 120000  // the registry probe reads a few small blobs
       xhr.send(JSON.stringify({ reference: reference }))
@@ -836,7 +836,7 @@ Ui.Panel {
     }
     xhr.onerror = finishUnavailable
     xhr.ontimeout = finishUnavailable
-    xhr.open("GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/onboarding/state")
+    root.openNova(xhr, "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/onboarding/state")
     // The backend's 30-second collection budget is cooperative. This transport
     // deadline is the panel's hard bound and does not imply that an aborted
     // read-only server collector was cancelled.
@@ -1217,7 +1217,7 @@ Ui.Panel {
     modelsRequestTimeoutCallback = function() { finish(0, "") }
     modelsRequestDeadline.restart()
     try {
-      xhr.open("GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/models")
+      root.openNova(xhr, "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/models")
       xhr.timeout = 2000
       xhr.send()
     } catch (error) { finish(0, "") }
@@ -1268,7 +1268,7 @@ Ui.Panel {
         hardwareSummary = "LOCAL AI // " + device + " · RAM " + bytesLabel(cap.memory.total_bytes) + " · EST. BUDGET " + bytesLabel(budget.operating_budget_bytes) + (payload.provider_available ? "" : " · OLLAMA OFFLINE")
       } catch (error) { hardwareSummary = "LOCAL AI // FIT UNAVAILABLE" }
     }
-    xhr.open("GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/models/fit")
+    root.openNova(xhr, "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/models/fit")
     xhr.timeout = 20000
     xhr.send()
   }
@@ -1297,7 +1297,7 @@ Ui.Panel {
         else catalogSummary = "CATALOG // LOCAL // " + (Number(payload.record_count) || 0) + " MODELS // EXACT " + exact
       } catch (error) { catalogSummary = "CATALOG // UNAVAILABLE" }
     }
-    xhr.open("GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/catalog/models")
+    root.openNova(xhr, "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/catalog/models")
     xhr.timeout = 2000
     xhr.send()
   }
@@ -1315,7 +1315,7 @@ Ui.Panel {
       } else next[modelData.catalog_id] = { status: "UNKNOWN" }
       preflightByCatalog = next
     }
-    xhr.open("GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/acquisition/models/" + encodeURIComponent(modelData.catalog_id) + "/preflight")
+    root.openNova(xhr, "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/acquisition/models/" + encodeURIComponent(modelData.catalog_id) + "/preflight")
     xhr.timeout = 5000
     xhr.send()
   }
@@ -1441,7 +1441,7 @@ Ui.Panel {
     xhr.onerror = function() { finish(0, "") }; xhr.ontimeout = function() { finish(0, "") }
     try {
       recoveryRequestTimeoutCallback = function() { finish(0, "") }; recoveryRequestDeadline.restart()
-      xhr.open("GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/acquisitions/" + encodeURIComponent(id) + "/recovery")
+      root.openNova(xhr, "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/acquisitions/" + encodeURIComponent(id) + "/recovery")
       xhr.send()
     } catch (error) { finish(0, "") }
   }
@@ -1493,7 +1493,7 @@ Ui.Panel {
     xhr.onerror = function() { finish(0, "") }; xhr.ontimeout = function() { finish(0, "") }
     try {
       recoveryRequestTimeoutCallback = function() { finish(0, "") }; recoveryRequestDeadline.restart()
-      xhr.open("POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/acquisitions/" + encodeURIComponent(item.id) + "/resolve-recovery")
+      root.openNova(xhr, "POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/acquisitions/" + encodeURIComponent(item.id) + "/resolve-recovery")
       xhr.setRequestHeader("Content-Type", "application/json"); xhr.send(JSON.stringify(body))
     } catch (error) { finish(0, "") }
   }
@@ -1566,7 +1566,7 @@ Ui.Panel {
         if (trackedAcquisitionId !== "") refreshTrackedAcquisition()
       } catch (error) { acquisitionStatus = "ACQUISITION STATUS UNAVAILABLE" }
     }
-    xhr.open("GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/acquisitions")
+    root.openNova(xhr, "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/acquisitions")
     xhr.timeout = 2000
     xhr.send()
   }
@@ -1658,7 +1658,7 @@ Ui.Panel {
         applyTrackedAcquisition(JSON.parse(xhr.responseText))
       } catch (error) { acquisitionStatus = "ACQUISITION STATUS UNAVAILABLE"; acquisitionTimer.stop() }
     }
-    xhr.open("GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/acquisitions/" + encodeURIComponent(trackedAcquisitionId))
+    root.openNova(xhr, "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/acquisitions/" + encodeURIComponent(trackedAcquisitionId))
     xhr.timeout = 2000
     xhr.send()
   }
@@ -1716,7 +1716,7 @@ Ui.Panel {
       } else root.reportModelResult(model, "NOVA's background service didn't answer. Nothing was deleted.", false)
     }
     try {
-      xhr.open("POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/models/installed/" + encodeURIComponent(model) + "/remove")
+      root.openNova(xhr, "POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/models/installed/" + encodeURIComponent(model) + "/remove")
       xhr.timeout = 15000
       xhr.send()
     } catch (error) { removalBusy = false; reportModelResult(model, "NOVA's background service didn't answer. Nothing was deleted.", false) }
@@ -1756,7 +1756,7 @@ Ui.Panel {
       root.refreshModels()
     }
     try {
-      xhr.open("POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/models/installed/" + encodeURIComponent(model) + "/unload")
+      root.openNova(xhr, "POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/models/installed/" + encodeURIComponent(model) + "/unload")
       xhr.timeout = 45000
       xhr.send()
     } catch (error) { removalBusy = false; reportModelResult(model, "NOVA's background service didn't answer.", false, true) }
@@ -1818,9 +1818,16 @@ Ui.Panel {
         acquisitionStatus = "AWAITING INSTALL APPROVAL"
       } catch (error) { acquisitionStatus = "INSTALL NOT AVAILABLE" }
     }
-    xhr.open("POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/acquisition/models/" + encodeURIComponent(catalogId) + "/propose")
+    root.openNova(xhr, "POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/acquisition/models/" + encodeURIComponent(catalogId) + "/propose")
     xhr.timeout = 45000  // novad first checks with Ollama whether the tag was re-published
     xhr.send()
+  }
+  // Every request to NOVA carries the key only this user can read (marketplace review,
+  // 2026-10-11): a web page in the user's browser can neither read it nor send it.
+  readonly property string novaKey: hostWidget && typeof hostWidget.apiKey === "string" ? hostWidget.apiKey : ""
+  function openNova(xhr, method, url) {
+    xhr.open(method, url)
+    if (novaKey !== "") xhr.setRequestHeader("X-Nova-Key", novaKey)
   }
   // 0.14.0 model updates (mock previews/model-updates, Konstantin 2026-10-10): novad checks
   // installed models against Ollama's library once a week or on REFRESH. NOVA never
@@ -1843,7 +1850,7 @@ Ui.Panel {
       if (xhr.status !== 200 && xhr.status !== 202) { root.modelUpdatesChecking = false; return }
       try { root.applyModelUpdates(JSON.parse(xhr.responseText)) } catch (error) { root.modelUpdatesChecking = false }
     }
-    xhr.open(force ? "POST" : "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + (force ? "/models/updates/check" : "/models/updates"))
+    root.openNova(xhr, force ? "POST" : "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + (force ? "/models/updates/check" : "/models/updates"))
     xhr.timeout = 5000
     xhr.send()
   }
@@ -1900,7 +1907,7 @@ Ui.Panel {
       root.modelUpdateBusy = ""
       if (xhr.status === 200) { try { root.applyModelUpdates(JSON.parse(xhr.responseText)) } catch (error) { } }
     }
-    xhr.open("POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/models/updates/" + encodeURIComponent(update.catalog_id) + (skip ? "/skip" : "/unskip"))
+    root.openNova(xhr, "POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/models/updates/" + encodeURIComponent(update.catalog_id) + (skip ? "/skip" : "/unskip"))
     xhr.timeout = 5000
     xhr.send()
   }
@@ -1951,7 +1958,7 @@ Ui.Panel {
         acquisitionStatus = "AWAITING UPDATE APPROVAL // " + name.toUpperCase()
       } catch (error) { acquisitionStatus = "UPDATE NOT AVAILABLE" }
     }
-    xhr.open("POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/acquisition/models/" + encodeURIComponent(update.catalog_id) + "/propose-update")
+    root.openNova(xhr, "POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/acquisition/models/" + encodeURIComponent(update.catalog_id) + "/propose-update")
     xhr.timeout = 45000  // novad re-reads Ollama's library before proposing
     xhr.send()
   }
@@ -2030,7 +2037,7 @@ Ui.Panel {
         done()
       }
       try {
-        xhr.open("GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/recommendations/models?profile=" + pair[1] + "&scope=known")
+        root.openNova(xhr, "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/recommendations/models?profile=" + pair[1] + "&scope=known")
         xhr.timeout = 20000
         xhr.send()
       } catch (error) { done() }
@@ -2088,7 +2095,7 @@ Ui.Panel {
         recommendationSummary = payload.status === "RECOMMENDATION_UNAVAILABLE" ? "RECOMMEND // UNAVAILABLE" : "RECOMMEND // INSUFFICIENT EVIDENCE"
       } catch (error) { recommendationSummary = "RECOMMEND // UNAVAILABLE" }
     }
-    xhr.open("GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/recommendations/models")
+    root.openNova(xhr, "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/recommendations/models")
     xhr.timeout = 20000
     xhr.send()
   }
@@ -2347,7 +2354,7 @@ Ui.Panel {
     xhr.onerror = function() { finish(0,"") }
     xhr.ontimeout = function() { finish(0,"") }
     try {
-      xhr.open("POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/model/active")
+      root.openNova(xhr, "POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/model/active")
       xhr.setRequestHeader("Content-Type", "application/json")
       // Covers the bounded target-load plus worst-case rollback window.
       xhr.timeout = 500000
@@ -2410,7 +2417,7 @@ Ui.Panel {
       }
     }
     try {
-      xhr.open("GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/cli/profiles")
+      root.openNova(xhr, "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/cli/profiles")
       xhr.timeout = 6000
       xhr.send()
     } catch (error) { cliState = null }
@@ -2535,7 +2542,7 @@ Ui.Panel {
       cliFollowUp.restart()
     }
     try {
-      xhr.open("POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/cli/launch")
+      root.openNova(xhr, "POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/cli/launch")
       xhr.setRequestHeader("Content-Type", "application/json")
       xhr.timeout = 15000
       xhr.send(JSON.stringify({ profile_id: profile.id, model: item.provider === "online" ? "online" : item.id }))
@@ -2706,7 +2713,7 @@ Ui.Panel {
     try {
       approvalRequestTimeoutCallback = function() { finish(0, "") }
       approvalDecisionDeadline.restart()
-      xhr.open("POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/approvals/" + encodeURIComponent(item.id) + "/" + decision)
+      root.openNova(xhr, "POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/approvals/" + encodeURIComponent(item.id) + "/" + decision)
       xhr.send()
     } catch (error) { finish(0, "") }
   }
@@ -2781,7 +2788,7 @@ Ui.Panel {
         addChat("assistant", "NOVA backend is online.")
       }
     }
-    xhr.open("GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/health")
+    root.openNova(xhr, "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/health")
     xhr.timeout = 1500
     xhr.send()
   }
@@ -2960,7 +2967,7 @@ Ui.Panel {
     }
     xhr.onerror = function() { finish(0, "") }
     xhr.ontimeout = function() { finish(0, "") }
-    xhr.open("POST", chatApiBase() + "/chat/sessions")
+    root.openNova(xhr, "POST", chatApiBase() + "/chat/sessions")
     xhr.timeout = 5000
     xhr.send()
   }
@@ -3048,7 +3055,7 @@ Ui.Panel {
     }
     xhr.onerror = function() { finishRetentionReconciliation(reconciliationSerial, "Whether this reply will be remembered is unknown.") }
     xhr.ontimeout = function() { finishRetentionReconciliation(reconciliationSerial, "Whether this reply will be remembered is unknown.") }
-    xhr.open("GET", chatApiBase() + "/chat/sessions/" + encodeURIComponent(sessionId))
+    root.openNova(xhr, "GET", chatApiBase() + "/chat/sessions/" + encodeURIComponent(sessionId))
     xhr.timeout = 1500
     xhr.send()
   }
@@ -3144,7 +3151,7 @@ Ui.Panel {
     }
     xhr.onerror = function() { stopWithError("novad chat unavailable", true) }
     xhr.ontimeout = function() { stopWithError("novad chat timed out", true) }
-    xhr.open("POST", chatApiBase() + "/chat/stream")
+    root.openNova(xhr, "POST", chatApiBase() + "/chat/stream")
     xhr.setRequestHeader("Content-Type", "application/json")
     xhr.setRequestHeader("Accept", "text/event-stream")
     xhr.timeout = 190000
@@ -3265,7 +3272,7 @@ Ui.Panel {
     }
     xhr.onerror = function() { finish(0, "") }
     xhr.ontimeout = function() { finish(0, "") }
-    xhr.open("POST", chatApiBase() + "/chat/sessions/" + encodeURIComponent(targetSessionId) + "/reset")
+    root.openNova(xhr, "POST", chatApiBase() + "/chat/sessions/" + encodeURIComponent(targetSessionId) + "/reset")
     xhr.timeout = 5000
     xhr.send()
   }

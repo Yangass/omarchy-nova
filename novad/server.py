@@ -555,7 +555,7 @@ def execute_action(action: str, snapshot: dict[str, Any]) -> dict[str, Any]:
     path = ACTION_REGISTRY[action]["path"] if action in ACTION_REGISTRY else UI_ACTION_PATHS.get(action)
     if not path: return {"status":"failure","error":"unknown_action"}
     body = json.dumps({"action":action,"snapshot":snapshot}, separators=(",", ":")).encode()
-    request = urllib.request.Request("http://127.0.0.1:8791" + path, data=body, method="POST", headers={"Authorization":"Bearer " + auth, "Content-Type":"application/json"})
+    request = urllib.request.Request("http://127.0.0.1:8791" + path, data=body, method="POST", headers={"Authorization":"Bearer " + auth, "Content-Type":"application/json", API_KEY_HEADER: api_key()})
     try:
         with urllib.request.urlopen(request, timeout=25) as response:
             data = json.loads(response.read(65_536).decode())
@@ -567,7 +567,7 @@ CLI_MIN_FREE_BYTES = 16 * 1024**3
 def actions_get(path: str) -> tuple[int, dict[str, Any]]:
     try: auth = ACTION_TOKEN_PATH.read_text().strip()
     except OSError: return 0, {}
-    request = urllib.request.Request("http://127.0.0.1:8791" + path, headers={"Authorization":"Bearer " + auth})
+    request = urllib.request.Request("http://127.0.0.1:8791" + path, headers={"Authorization":"Bearer " + auth, API_KEY_HEADER: api_key()})
     try:
         with urllib.request.urlopen(request, timeout=5) as response:
             data = json.loads(response.read(65_536).decode())
@@ -604,7 +604,10 @@ def cli_profiles_state() -> tuple[int, dict[str, Any]]:
 
 def upstream_json(url: str, *, method: str = "GET", payload: dict[str, Any] | None = None, timeout: int = 3) -> tuple[int, dict[str, Any]]:
     body = json.dumps(payload, separators=(",", ":")).encode() if payload is not None else None
-    request = urllib.request.Request(url, data=body, method=method, headers={"Content-Type": "application/json"} if body else {})
+    headers = {"Content-Type": "application/json"} if body else {}
+    # Only NOVA's own system-tools gets the key; Ollama never sees it.
+    if url.startswith(SYSTEM_TOOLS_URL + "/"): headers[API_KEY_HEADER] = api_key()
+    request = urllib.request.Request(url, data=body, method=method, headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             decoded = json.loads(response.read(2_000_000).decode())
@@ -623,7 +626,7 @@ def tool_result(name: Any, arguments: Any) -> tuple[str, dict[str, Any]]:
         if len(json.dumps(data).encode()) > MAX_TOOL_RESPONSE_BYTES:
             return name, {"ok": False, "error": "tool_result_too_large", "limit_bytes": MAX_TOOL_RESPONSE_BYTES}
         return name, {"ok": True, "source": "novad", "data": data, "sampling_caveat": "Dynamic samples may include this NOVA request. Estimates use stable capacity; context advice is not applied automatically."}
-    request = urllib.request.Request(SYSTEM_TOOLS_URL + TOOL_REGISTRY[name]["path"], method="GET")
+    request = urllib.request.Request(SYSTEM_TOOLS_URL + TOOL_REGISTRY[name]["path"], method="GET", headers={API_KEY_HEADER: api_key()})
     try:
         with urllib.request.urlopen(request, timeout=TOOL_TIMEOUT_SECONDS) as response:
             raw = response.read(MAX_TOOL_RESPONSE_BYTES + 1)
@@ -732,8 +735,58 @@ def peer_uid(client, server, tables=TCP_TABLES):
     return owners.pop() if len(owners) == 1 else None
 
 
+# The desktop user's own web browser passes the UID check, so a web page could still
+# send requests (cross-site request forgery) or pose as 127.0.0.1 (DNS rebinding;
+# review, 2026-10-11). Every request must therefore name this service's loopback Host
+# and, except /health, carry the key from a file only this user can read
+# (~/.config/nova/api.token, 0600). Pages can neither read that file nor add the
+# header to a cross-site request without a preflight, which is never answered.
+API_KEY_PATH = os.path.join(os.path.expanduser("~"), ".config", "nova", "api.token")
+API_KEY_HEADER = "X-Nova-Key"
+OPEN_PATHS = ("/health",)
+
+
+def api_key(path=None):
+    """The shared key, created once (0600) by whichever NOVA service starts first."""
+    import secrets
+    path = path or API_KEY_PATH
+    try:
+        with open(path) as file: value = file.read().strip()
+        if len(value) >= 32: return value
+    except FileNotFoundError: pass
+    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+    try:
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "w") as file: file.write(secrets.token_urlsafe(32) + "\n")
+    except FileExistsError: pass
+    with open(path) as file: value = file.read().strip()
+    if len(value) < 32: raise RuntimeError("NOVA API key unavailable")
+    return value
+
+
+def _guarded(handler):
+    class Guarded(handler):
+        def parse_request(self):
+            from hmac import compare_digest
+            from urllib.parse import urlsplit
+            if not super().parse_request(): return False
+            port = self.server.server_address[1]
+            if self.headers.get("Host") not in (f"127.0.0.1:{port}", f"localhost:{port}"):
+                self.send_error(403, "Unexpected Host"); return False
+            if urlsplit(self.path).path not in OPEN_PATHS and not compare_digest(
+                    (self.headers.get(API_KEY_HEADER) or "").encode(), api_key().encode()):
+                self.send_error(401, "NOVA key required"); return False
+            return True
+    Guarded.__name__ = Guarded.__qualname__ = handler.__name__
+    return Guarded
+
+
 class OwnerOnlyHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
+
+    def __init__(self, address, handler):
+        api_key()  # create the key before the first request
+        super().__init__(address, _guarded(handler))
 
     def verify_request(self, request, client_address):
         return peer_uid(client_address, self.server_address[:2]) == os.getuid()
@@ -741,7 +794,7 @@ class OwnerOnlyHTTPServer(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "novad/0.14.0"
+    server_version = "novad/0.14.1"
     def log_message(self, _format: str, *_args: Any) -> None: return
     def send_json(self, status: HTTPStatus, payload: dict[str, Any]) -> bool:
         body = json.dumps(payload, separators=(",", ":")).encode()

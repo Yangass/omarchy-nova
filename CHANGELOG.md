@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.14.1
+
+- **Security:** a web page open in your own browser could send requests to NOVA's
+  helpers on `127.0.0.1` (cross-site request forgery) or pose as your computer (DNS
+  rebinding). Every request now needs a key that only your account can read
+  (`~/.config/nova/api.token`), sent by NOVA's own panel, and must be addressed to
+  `127.0.0.1` or `localhost`. Found by the Omarchy marketplace review.
+
 ## 0.14.0
 
 - **Security:** NOVA's helpers now serve only your own user account. Before, another

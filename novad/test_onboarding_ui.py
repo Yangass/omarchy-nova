@@ -16,7 +16,7 @@ class OnboardingUiContractTests(unittest.TestCase):
         end = PANEL.index('function onboardingTitle', start)
         refresh = PANEL[start:end]
         self.assertIn('"/onboarding/state"', refresh)
-        self.assertIn('xhr.open("GET"', refresh)
+        self.assertIn('root.openNova(xhr, "GET"', refresh)
         self.assertIn('if (onboardingRequestInFlight || !onboardingRefreshAllowed()) return', refresh)
         self.assertIn('xhr.timeout = 35000', refresh)
         self.assertNotIn('POST', refresh)

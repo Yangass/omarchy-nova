@@ -27,6 +27,7 @@ ShellRoot {
     property bool acceptancePreview: true
     property var acceptancePreviewFixture: shell.fixture
     property string api: "fixture://no-production-api"
+    property string apiKey: ""
     property bool online: shell.fixture.host.online === true
     property real cpu: 18
     property real memory: 42

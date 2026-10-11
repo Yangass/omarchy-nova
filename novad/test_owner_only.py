@@ -98,29 +98,86 @@ class PeerTable(unittest.TestCase):
 
 
 class LiveSocket(unittest.TestCase):
-    """A real loopback server: this user gets an answer, anyone else a closed connection."""
+    """A real loopback server: this user's panel is served; other accounts, forged
+    browser requests and rebinding hosts are not."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
+        patcher = mock.patch.object(novad, "API_KEY_PATH", str(Path(self.tmp.name) / "nova" / "api.token"))
+        patcher.start(); self.addCleanup(patcher.stop)
 
     def serve(self):
         httpd = novad.OwnerOnlyHTTPServer(("127.0.0.1", 0), Hello)
         thread = threading.Thread(target=httpd.serve_forever, daemon=True); thread.start()
         self.addCleanup(lambda: (httpd.shutdown(), httpd.server_close(), thread.join(2)))
-        return f"http://127.0.0.1:{httpd.server_address[1]}/"
+        self.port = httpd.server_address[1]
+        return f"http://127.0.0.1:{self.port}/"
 
-    def test_this_user_is_served(self):
-        with urllib.request.urlopen(self.serve(), timeout=5) as response:
-            self.assertEqual(response.read(), b"ok")
+    def get(self, url, headers=None):
+        request = urllib.request.Request(url, headers=headers or {})
+        try:
+            with urllib.request.urlopen(request, timeout=5) as response: return response.status
+        except urllib.error.HTTPError as error: return error.code
+
+    def raw(self, host, path="/state", key=None):
+        with socket.create_connection(("127.0.0.1", self.port), timeout=5) as conn:
+            extra = f"X-Nova-Key: {key}\r\n" if key else ""
+            conn.sendall(f"GET {path} HTTP/1.1\r\nHost: {host}\r\n{extra}Connection: close\r\n\r\n".encode())
+            data = b""
+            while chunk := conn.recv(4096): data += chunk
+            return data.split(b" ")[1].decode()
+
+    def test_the_key_file_is_created_private_and_reused(self):
+        self.serve()
+        path = Path(novad.API_KEY_PATH)
+        self.assertEqual(oct(path.stat().st_mode & 0o777), "0o600")
+        self.assertGreaterEqual(len(novad.api_key()), 32)
+        self.assertEqual(novad.api_key(), path.read_text().strip())
+
+    def test_this_users_panel_with_the_key_is_served(self):
+        url = self.serve()
+        self.assertEqual(self.get(url, {"X-Nova-Key": novad.api_key()}), 200)
+        self.assertEqual(self.raw(f"localhost:{self.port}", key=novad.api_key()), "200")
+
+    def test_a_request_without_the_right_key_is_refused(self):
+        url = self.serve()
+        self.assertEqual(self.get(url), 401)  # what a forged browser request looks like
+        self.assertEqual(self.get(url, {"X-Nova-Key": "guess" * 10}), 401)
+
+    def test_health_is_open_but_still_host_checked(self):
+        url = self.serve()
+        self.assertEqual(self.get(url + "health"), 200)
+        self.assertEqual(self.raw("evil.example:80", "/health"), "403")
+
+    def test_dns_rebinding_hosts_are_refused_even_with_the_key(self):
+        self.serve()
+        for host in ("evil.example", f"evil.example:{self.port}", "127.0.0.1", f"127.0.0.2:{self.port}"):
+            with self.subTest(host=host):
+                self.assertEqual(self.raw(host, key=novad.api_key()), "403")
 
     def test_another_user_is_refused(self):
         url = self.serve()
         with mock.patch.object(novad.os, "getuid", return_value=os.getuid() + 1):
             with self.assertRaises((urllib.error.URLError, ConnectionError, socket.error, http_errors())):
-                urllib.request.urlopen(url, timeout=5).read()
+                urllib.request.urlopen(urllib.request.Request(url, headers={"X-Nova-Key": novad.api_key()}), timeout=5).read()
 
     def test_unknown_owner_is_refused(self):
         url = self.serve()
         with mock.patch.object(novad, "peer_uid", return_value=None):
             with self.assertRaises((urllib.error.URLError, ConnectionError, socket.error, http_errors())):
-                urllib.request.urlopen(url, timeout=5).read()
+                urllib.request.urlopen(urllib.request.Request(url, headers={"X-Nova-Key": novad.api_key()}), timeout=5).read()
+
+
+class KeyOnlyWhereItBelongs(unittest.TestCase):
+    def test_novad_sends_the_key_to_system_tools_but_never_to_ollama(self):
+        seen = []
+        def fake_urlopen(request, timeout=None):
+            seen.append((request.full_url, request.get_header("X-nova-key")))
+            raise urllib.error.URLError("offline")
+        with mock.patch.object(novad.urllib.request, "urlopen", fake_urlopen), mock.patch.object(novad, "api_key", return_value="k" * 40):
+            novad.upstream_json(novad.SYSTEM_TOOLS_URL + "/telemetry")
+            novad.upstream_json(novad.OLLAMA_URL + "/api/ps")
+        self.assertEqual(seen, [(novad.SYSTEM_TOOLS_URL + "/telemetry", "k" * 40), (novad.OLLAMA_URL + "/api/ps", None)])
 
 
 def http_errors():

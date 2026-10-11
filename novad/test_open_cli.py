@@ -36,6 +36,16 @@ class NoClient:
     returncode = 1
 
 
+_KEY_DIR = tempfile.TemporaryDirectory()
+
+
+def setUpModule():
+    # novad's calls to nova-actions carry the API key; never create the user's real one here.
+    patcher = patch.object(novad, "API_KEY_PATH", os.path.join(_KEY_DIR.name, "api.token"))
+    patcher.start()
+    unittest.addModuleCleanup(patcher.stop)
+
+
 class ProfileFixture(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

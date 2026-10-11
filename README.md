@@ -100,7 +100,9 @@ No account, no telemetry. And on your computer:
 
 - **Only you.** NOVA's helpers listen only on your own computer (`127.0.0.1`) and serve
   only your user account: on every connection they ask the Linux kernel who is
-  connecting and refuse anyone else, including other accounts on the same PC.
+  connecting and refuse anyone else, including other accounts on the same PC. Every
+  request also needs a private key that only NOVA's panel sends, so a web page open in
+  your browser can't drive NOVA either.
 - **No root.** NOVA runs as you. The only password prompt is the one-time Ollama install.
 - **You approve every change.** The chat model can suggest an action; only your click on
   **Approve** runs it, once, before the approval expires.
