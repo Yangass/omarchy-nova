@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import struct
 import tempfile
 import time
@@ -80,9 +81,13 @@ def due(state: dict, now: float) -> bool:
 
 def local_layers(artifact_id: str, root=OLLAMA_STORAGE) -> dict | None:
     """{digest: (media kind, size)} of the installed manifest, or None when unreadable."""
+    # Same identities the download adapter accepts: never a path (security review 2026-10-11).
+    if not isinstance(artifact_id, str) or not re.fullmatch(r'[a-z0-9][a-z0-9._-]{0,127}:[a-z0-9][a-z0-9._-]{0,127}', artifact_id) \
+            or '..' in artifact_id:
+        return None
     try:
         name, tag = artifact_id.split(':')
-        repo = name if '/' in name else 'library/' + name
+        repo = 'library/' + name
         path = Path(root) / 'manifests' / 'registry.ollama.ai' / repo / tag
         _read_manifest(path, Path(root))
         manifest = json.loads(path.read_bytes())

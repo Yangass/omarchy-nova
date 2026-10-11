@@ -8,6 +8,7 @@ import pwd
 import re
 import secrets
 import shutil
+import stat
 import subprocess
 import time
 import urllib.error
@@ -794,7 +795,7 @@ class OwnerOnlyHTTPServer(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "novad/0.14.1"
+    server_version = "novad/0.14.2"
     def log_message(self, _format: str, *_args: Any) -> None: return
     def send_json(self, status: HTTPStatus, payload: dict[str, Any]) -> bool:
         body = json.dumps(payload, separators=(",", ":")).encode()
@@ -1154,7 +1155,23 @@ class Handler(BaseHTTPRequestHandler):
         status = {'removed': HTTPStatus.OK, 'not_found': HTTPStatus.NOT_FOUND, 'invalid_id': HTTPStatus.BAD_REQUEST}.get(result.get('status'), HTTPStatus.INTERNAL_SERVER_ERROR)
         self.send_json(status, result)
 
+def private_state_dirs(home: Path | None = None) -> list[str]:
+    """Keep NOVA's own state folders private (0700) even if the home folder is not
+    (security review 2026-10-11). Only real directories owned by this user are touched."""
+    home = home or Path.home()
+    state = Path(os.environ.get("XDG_STATE_HOME") or home / ".local" / "state") / "nova"
+    tightened = []
+    for path in (state, state / "installer", home / ".local" / "share" / "nova"):
+        try:
+            info = path.lstat()
+            if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) & 0o077 == 0: continue
+            os.chmod(path, 0o700); tightened.append(str(path))
+        except OSError: continue
+    return tightened
+
+
 if __name__ == "__main__":
+    private_state_dirs()
     acquisition_store()  # Reconcile durable state before accepting requests.
     print(f"novad listening on http://{HOST}:{PORT}", flush=True)
     OwnerOnlyHTTPServer((HOST, PORT), Handler).serve_forever()

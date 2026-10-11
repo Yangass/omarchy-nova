@@ -95,6 +95,12 @@ class CheckRecord(unittest.TestCase):
         self.assertEqual(result["status"], "changed_too_much")
         self.assertIn("architecture_changed", result["reasons"])
 
+    def test_local_layers_never_reads_a_path_from_a_name(self):
+        for name in ("../../etc:passwd", "llama3.2/../x:1b", "a..b:1b", "user/model:tag", None):
+            with self.subTest(name=name):
+                self.assertIsNone(model_updates.local_layers(name, self.root))
+        self.assertIsNotNone(model_updates.local_layers("llama3.2:1b", self.root))
+
     def test_gone_and_offline(self):
         self.assertEqual(self.check(gone)["status"], "gone")
         result = self.check(offline)

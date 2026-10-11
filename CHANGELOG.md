@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.14.2
+
+From our own security review after the marketplace findings (all hardening, nothing
+known to be exploitable since 0.14.1):
+
+- The system-readings helper no longer sends CORS headers (left over from an early
+  Open WebUI integration); no NOVA helper lets a web page read its answers.
+- NOVA keeps its own folders private (`~/.local/state/nova`, `~/.local/share/nova`),
+  even if your home folder isn't.
+- Stricter model names before reading Ollama's files; constant-time key checks.
+- New [SECURITY.md](SECURITY.md): what NOVA protects against, and how to report a
+  problem privately.
+
 ## 0.14.1
 
 - **Security:** a web page open in your own browser could send requests to NOVA's

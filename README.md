@@ -122,7 +122,8 @@ No account, no telemetry. And on your computer:
 - **Coding CLI (advanced):** NOVA can open a coding assistant in a terminal that uses
   a local model. It needs a setup file, so the **OPEN CLI** button only appears once
   one exists; a guided setup is planned.
-- **How it works inside:** [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md).
+- **How it works inside:** [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md). Security
+  details and how to report a problem: [SECURITY.md](SECURITY.md).
 
 ## Who makes it
 

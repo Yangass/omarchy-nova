@@ -58,6 +58,10 @@ def proc(pid: int) -> dict[str, Any] | None:
         tail=Path(f"/proc/{pid}/stat").read_text().rsplit(")",1)[1].split(); name=Path(f"/proc/{pid}/comm").read_text().strip(); cmd=Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0",b" ").decode(errors="replace").strip()
         return {"pid":pid,"uid":os.stat(f"/proc/{pid}").st_uid,"name":name,"start_time":tail[19],"cmdline":cmd}
     except (FileNotFoundError, PermissionError, IndexError, OSError): return None
+def bearer_ok(value: Any) -> bool:
+    # Constant-time comparison (security review 2026-10-11).
+    import hmac
+    return isinstance(value, str) and hmac.compare_digest(value.encode(), ("Bearer " + TOKEN).encode())
 def is_protected(item: dict[str, Any]) -> bool:
     name=item["name"].lower(); cmd=item["cmdline"].lower()
     return item["pid"] in nova_pids() or not cmd or "ollama" in cmd or any(word in name or word in cmd for word in PROTECTED)
@@ -364,13 +368,13 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self)->None:
         if self.path=="/health":self.reply(HTTPStatus.OK,{"status":"ok","loopback_only":True,"pid":os.getpid()})
         elif self.path=="/v1/coding-cli-profiles":
-            if self.headers.get("Authorization")!="Bearer "+TOKEN:self.reply(HTTPStatus.UNAUTHORIZED,{"error":"unauthorized"});return
+            if not bearer_ok(self.headers.get("Authorization")):self.reply(HTTPStatus.UNAUTHORIZED,{"error":"unauthorized"});return
             self.reply(HTTPStatus.OK,list_cli_profiles())
         else:self.reply(HTTPStatus.NOT_FOUND,{"error":"unknown_endpoint"})
     def do_POST(self)->None:
         routes={"/v1/restart-nova-system-tools":"restart_nova_system_tools","/v1/restart-novad":"restart_novad","/v1/restart-nova-actions":"restart_nova_actions","/v1/terminate-user-process":"terminate_user_process","/v1/open-known-application":"open_known_application","/v1/open-coding-cli":"open_coding_cli"}; action=routes.get(self.path)
         if not action:self.reply(HTTPStatus.NOT_FOUND,{"error":"unknown_endpoint"});return
-        if self.headers.get("Authorization")!="Bearer "+TOKEN:self.reply(HTTPStatus.UNAUTHORIZED,{"error":"unauthorized"});return
+        if not bearer_ok(self.headers.get("Authorization")):self.reply(HTTPStatus.UNAUTHORIZED,{"error":"unauthorized"});return
         data=body(self)
         if not data or data.get("action")!=action or not isinstance(data.get("snapshot"),dict):self.reply(HTTPStatus.BAD_REQUEST,{"error":"invalid_approved_snapshot"});return
         snapshot=data["snapshot"]

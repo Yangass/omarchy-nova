@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only, loopback-only diagnostics API for a local Open WebUI tool."""
+"""Read-only, loopback-only diagnostics for NOVA (CPU, memory, GPU, disks, processes, logs)."""
 
 from __future__ import annotations
 
@@ -407,9 +407,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
-        self.send_header("Access-Control-Allow-Origin", "http://127.0.0.1:3000")
-        self.send_header("Access-Control-Allow-Credentials", "true")
-        self.send_header("Vary", "Origin")
+        # No CORS headers: no web page may read these answers (security review 2026-10-11;
+        # they were left over from an early Open WebUI integration on 127.0.0.1:3000).
         self.end_headers()
         self.wfile.write(data)
 
@@ -429,16 +428,6 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Diagnostic source unavailable.", "detail": str(error)})
         else:
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "Unknown endpoint."})
-
-    def do_OPTIONS(self) -> None:
-        self.send_response(HTTPStatus.NO_CONTENT)
-        self.send_header("Access-Control-Allow-Origin", "http://127.0.0.1:3000")
-        self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Session-Id")
-        self.send_header("Access-Control-Max-Age", "600")
-        self.send_header("Access-Control-Allow-Credentials", "true")
-        self.send_header("Vary", "Origin")
-        self.end_headers()
 
     def do_POST(self) -> None: self.send_json(HTTPStatus.METHOD_NOT_ALLOWED, {"error": "Read-only service; GET only."})
     def do_PUT(self) -> None: self.do_POST()

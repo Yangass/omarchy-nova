@@ -168,6 +168,32 @@ class LiveSocket(unittest.TestCase):
                 urllib.request.urlopen(urllib.request.Request(url, headers={"X-Nova-Key": novad.api_key()}), timeout=5).read()
 
 
+class Hardening(unittest.TestCase):
+    def test_no_service_sends_cors_headers(self):
+        for path in ("novad/server.py", "nova-actions/server.py", "nova-system-tools/server.py"):
+            with self.subTest(path=path):
+                text = (ROOT / path).read_text()
+                self.assertNotIn('send_header("Access-Control', text)
+                self.assertNotIn("def do_OPTIONS", text)
+
+    def test_state_folders_become_private_but_symlinks_and_others_are_left_alone(self):
+        with tempfile.TemporaryDirectory() as raw:
+            home = Path(raw)
+            state = home / ".local/state/nova"; (state / "installer").mkdir(parents=True)
+            share = home / ".local/share/nova"; share.mkdir(parents=True)
+            for path in (state, state / "installer", share): os.chmod(path, 0o755)
+            with mock.patch.dict(os.environ, {"XDG_STATE_HOME": ""}):
+                tightened = novad.private_state_dirs(home)
+            self.assertEqual(len(tightened), 3)
+            for path in (state, state / "installer", share):
+                self.assertEqual(oct(path.stat().st_mode & 0o777), "0o700")
+            target = home / "elsewhere"; target.mkdir(); os.chmod(target, 0o755)
+            (state / "installer").rmdir(); (state / "installer").symlink_to(target)
+            with mock.patch.dict(os.environ, {"XDG_STATE_HOME": ""}):
+                novad.private_state_dirs(home)
+            self.assertEqual(oct(target.stat().st_mode & 0o777), "0o755")
+
+
 class KeyOnlyWhereItBelongs(unittest.TestCase):
     def test_novad_sends_the_key_to_system_tools_but_never_to_ollama(self):
         seen = []
