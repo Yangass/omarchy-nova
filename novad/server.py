@@ -19,7 +19,7 @@ from threading import Event, Lock, Thread
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import unquote, urlsplit
-from catalog_observability import OLLAMA_STORAGE, catalog_view
+from catalog_observability import OLLAMA_STORAGE, catalog_view, local_inventory
 from acquisition_integration import live_preflight
 from acquisition_lifecycle import AcquisitionLifecycle, LifecycleError
 from ollama_acquisition import OllamaAcquisitionAdapter, inspect_artifact
@@ -32,7 +32,7 @@ from onboarding_integration import collect_onboarding_state
 import catalog_repins
 import model_updates
 import requested_models
-from model_removal import RemovalStore
+from model_removal import RemovalStore, sharing as model_removal_sharing
 from catalog import DEFAULT_PATH as CATALOG_DEFAULT_PATH, load_catalog
 from chat_sessions import (BusySessionError, ChatSessionStore,
                            MAX_HISTORY_BYTES as CHAT_HISTORY_LIMIT_BYTES,
@@ -484,6 +484,18 @@ def removal_inputs(model: str) -> dict[str, Any]:
             "resident": resident_models(), "cli_models": cli_models}
 
 
+def model_sharing() -> dict[str, dict[str, Any]]:
+    """For each installed model: what deleting it frees and which models share its files."""
+    records = local_inventory(with_layers=True).get('records', [])
+    result = {}
+    for record in records:
+        info = model_removal_sharing(record['id'], records)
+        if info is not None:
+            result[record['id']] = info
+            if record['id'].endswith(':latest'): result[record['id'][:-len(':latest')]] = info
+    return result
+
+
 def byte_count(value: Any) -> int | None:
     """A size from Ollama's /api/ps: a non-negative int (bool is not a size), else None."""
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
@@ -795,7 +807,7 @@ class OwnerOnlyHTTPServer(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "novad/0.14.2"
+    server_version = "novad/0.14.4"
     def log_message(self, _format: str, *_args: Any) -> None: return
     def send_json(self, status: HTTPStatus, payload: dict[str, Any]) -> bool:
         body = json.dumps(payload, separators=(",", ":")).encode()
@@ -917,6 +929,13 @@ class Handler(BaseHTTPRequestHandler):
                         for entry in models: entry["resident"]=None; entry["vram_bytes"]=None; entry["memory_bytes"]=None
                 except (ProviderUnavailable, ProviderOperationFailed):
                     for entry in models: entry["resident"]=None; entry["vram_bytes"]=None; entry["memory_bytes"]=None
+                # What a delete would really free, and which models share the files (2026-10-12).
+                try: shares = model_sharing()
+                except (OSError, ValueError): shares = {}
+                for entry in models:
+                    info = shares.get(entry.get("id"))
+                    entry["delete_frees_bytes"] = info["frees_bytes"] if info else None
+                    entry["shares_files_with"] = info["shared_with"] if info else []
                 payload={"active_provider":ACTIVE_PROVIDER,"active_model":ACTIVE_MODEL,"selection_state":"selected" if has_active_selection() else "none","active_runtime_ready":active.get("runtime_ready",False),"models":models}
                 if active.get("transition"): payload["transition"]=active["transition"]
                 self.send_json(HTTPStatus.OK,payload)
@@ -1047,7 +1066,7 @@ class Handler(BaseHTTPRequestHandler):
             if (parsed.query or not self.empty_request_body() or '/' in raw or not model
                     or len(model) > 200 or '/' in model):
                 self.send_json(HTTPStatus.BAD_REQUEST, {'error': 'invalid_model_request'}); return
-            try: result = REMOVALS.propose(model, **removal_inputs(model))
+            try: result = REMOVALS.propose(model, shares=model_sharing().get(model), **removal_inputs(model))
             except ProviderUnavailable:
                 self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {'error': 'provider_unavailable'}); return
             audit('model_removal_proposed', model=model, status=result['status'], id=result.get('id'))

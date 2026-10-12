@@ -1683,9 +1683,25 @@ Ui.Panel {
              NOT_INSTALLED: "it isn't installed any more",
              DIGEST_CHANGED: "it changed since you asked (try again)"})[code] || String(code).toLowerCase().replace(/_/g, " ")
   }
+  // 2026-10-12: a model built on another (same weights, other settings) shares its files;
+  // deleting it frees only what no other model uses. Say so, and name who keeps the files.
+  function sharedNames(names) {
+    var list = (names || []).map(function(n) { return modelPlainName(n) })
+    return list.length <= 2 ? list.join(" and ") : list.slice(0, 2).join(", ") + " and " + (list.length - 2) + " more"
+  }
+  function removalFreesText(freesBytes, sizeBytes, sharedWith) {
+    if (typeof freesBytes === "number")
+      return "frees " + transferLabel(freesBytes) + ((sharedWith || []).length ? " (its main files stay: " + sharedNames(sharedWith) + " use" + (sharedWith.length === 1 ? "s" : "") + " them too)" : "")
+    return typeof sizeBytes === "number" ? "frees up to " + bytesLabel(sizeBytes) + " (less if another model shares its files)" : ""
+  }
   function removalTooltip(modelData) {
     var size = modelData && modelData.metadata && modelData.metadata.size_bytes
-    return "Delete " + modelData.id + " from this computer" + (typeof size === "number" ? " · frees up to " + bytesLabel(size) : "") + " · asks for approval first"
+    var frees = removalFreesText(modelData.delete_frees_bytes, size, modelData.shares_files_with)
+    return "Delete " + modelData.id + " from this computer" + (frees ? " · " + frees : "") + " · asks for approval first"
+  }
+  function removalApprovalLine(item) {
+    var frees = removalFreesText(item.freesBytes, item.size, item.sharedWith)
+    return (frees ? frees.charAt(0).toUpperCase() + frees.slice(1) + " · " : "") + "you can download it again later"
   }
   function setRemovalStatus(model, text, failed) { removalStatusModel = model; removalStatus = text; removalFailed = failed; unloadNoteModel = "" }
   // Delete/unload results go into the chat (a deleted model's row disappears);
@@ -1709,8 +1725,9 @@ Ui.Panel {
         root.setRemovalStatus(model, "", false)
         root.beginApproval({ id: payload.id, action: "remove_installed_model", removal: true, model: model,
           expiresAt: payload.expires_at, size: payload.size_bytes,
+          freesBytes: payload.frees_bytes, sharedWith: Array.isArray(payload.shared_with) ? payload.shared_with : [],
           summary: "DELETE " + model.toUpperCase() + " FROM THIS COMPUTER",
-          impact: "Ollama deletes this model's files. Other models and NOVA's settings stay. You can download it again later." })
+          impact: "Ollama deletes this model and the files only it uses; files other models use stay. NOVA's settings stay. You can download it again later." })
       } else if (payload && payload.status === "blocked" && Array.isArray(payload.blockers)) {
         root.reportModelResult(model, "Not deleted: " + payload.blockers.map(root.removalBlockerText).join("; ") + ".", true)
       } else root.reportModelResult(model, "NOVA's background service didn't answer. Nothing was deleted.", false)
@@ -1768,7 +1785,9 @@ Ui.Panel {
     if (decision === "deny") reportModelResult(model, "Kept " + model + ". Nothing was deleted.", false)
     else if (status === 200 && payload.status === "deleted") {
       clearFinishedInstallStatus()
-      reportModelResult(model, "Deleted " + model + (typeof payload.freed_bytes === "number" ? " · freed " + bytesLabel(payload.freed_bytes) : "") + ".", false)
+      var shared = Array.isArray(payload.shared_with) ? payload.shared_with : []
+      reportModelResult(model, "Deleted " + model + (typeof payload.freed_bytes === "number" ? " · freed " + transferLabel(payload.freed_bytes) : "")
+        + (shared.length ? " · its main files stay because " + sharedNames(shared) + " use" + (shared.length === 1 ? "s" : "") + " them" : "") + ".", false)
     } else if (payload && payload.status === "blocked" && Array.isArray(payload.blockers))
       reportModelResult(model, "Not deleted: " + payload.blockers.map(removalBlockerText).join("; ") + ".", true)
     else if (status === 410 || payload.error === "expired_approval") reportModelResult(model, "The approval expired. Nothing was deleted.", false)
@@ -4583,7 +4602,7 @@ Ui.Panel {
                 // UX Phase 1: what, how big and whether it fits come first; every fact of the
                 // frozen preflight stays one click away (disclosed, not removed).
                 Text { objectName: "approvalSummaryLine"; visible: !!(root.pendingApproval && (root.pendingApproval.acquisition || root.pendingApproval.removal)); width: parent.width; wrapMode: Text.Wrap
-                       text: !root.pendingApproval ? "" : root.pendingApproval.removal ? "Frees up to " + root.bytesLabel(root.pendingApproval.size) + " (less if another model shares its files) · you can download it again later" : root.pendingApproval.update ? "What changed: " + root.pendingApproval.whatChanged + " · download " + root.pendingApproval.download + " · " + root.approvalFitShort(root.pendingApproval.fit) + " · " + root.bytesLabel(root.pendingApproval.availableSpace) + " free" : root.bytesLabel(root.pendingApproval.size) + " on disk · " + root.approvalFitShort(root.pendingApproval.fit) + " · " + root.bytesLabel(root.pendingApproval.availableSpace) + " free"
+                       text: !root.pendingApproval ? "" : root.pendingApproval.removal ? root.removalApprovalLine(root.pendingApproval) : root.pendingApproval.update ? "What changed: " + root.pendingApproval.whatChanged + " · download " + root.pendingApproval.download + " · " + root.approvalFitShort(root.pendingApproval.fit) + " · " + root.bytesLabel(root.pendingApproval.availableSpace) + " free" : root.bytesLabel(root.pendingApproval.size) + " on disk · " + root.approvalFitShort(root.pendingApproval.fit) + " · " + root.bytesLabel(root.pendingApproval.availableSpace) + " free"
                              + (root.pendingApproval.trust === "user_requested" ? " · not in NOVA's catalog" : "")
                        color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                 Text { objectName: "approvalDetailsToggle"; visible: !!(root.pendingApproval && root.pendingApproval.acquisition); text: root.approvalDetailsOpen ? "[ HIDE DETAILS ]" : "[ DETAILS ]"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.7

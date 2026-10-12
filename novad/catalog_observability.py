@@ -41,8 +41,11 @@ def _read_manifest(path, root):
     return hashlib.sha256(raw).hexdigest()
 
 
-def local_inventory(root=OLLAMA_STORAGE):
+def local_inventory(root=OLLAMA_STORAGE, with_layers=False):
     """Read manifests + stat referenced blobs. Never hash large weights or call Ollama.
+
+    ``with_layers`` adds each model's files as ``layers`` ({blob digest: size}), so a
+    delete can say what it really frees and which models share those files.
 
     Partial scans never establish absence. Unexpected layouts are not guessed.
     """
@@ -83,7 +86,14 @@ def local_inventory(root=OLLAMA_STORAGE):
                 result['errors'].append('manifest unreadable/invalid or referenced blobs incomplete')
                 result['records'].append({'provider': 'ollama', 'id': identifier, 'installed': None, 'digest': None})
                 continue
-            result['records'].append({'provider': 'ollama', 'id': identifier, 'installed': True, 'digest': digest})
+            record = {'provider': 'ollama', 'id': identifier, 'installed': True, 'digest': digest}
+            if with_layers:
+                try:
+                    manifest = json.loads((base/filename).read_bytes()[:MAX_MANIFEST_BYTES + 1])
+                    record['layers'] = {layer['digest']: layer['size'] for layer in [manifest['config'], *manifest['layers']]}
+                except (OSError, ValueError, KeyError, TypeError):
+                    record['layers'] = None
+            result['records'].append(record)
     if result['errors']: result['status'] = 'partial'
     return result
 

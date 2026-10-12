@@ -52,8 +52,11 @@ class Handler(BaseHTTPRequestHandler):
             REQUESTS["proposed"].append(model)
             if model == "qwen3:8b":
                 self.reply(409, {"status": "blocked", "model": model, "blockers": ["SELECTED_MODEL", "LOADED_IN_MEMORY"]}); return
-            self.reply(201, {"status": "proposed", "id": "del_fixture", "model": model, "size_bytes": 9276198565,
-                             "digest": "abc", "expires_at": 4102444800}); return
+            proposal = {"status": "proposed", "id": "del_fixture", "model": model, "size_bytes": 9276198565,
+                        "digest": "abc", "expires_at": 4102444800}
+            if MODE["approve"] == "shared":  # 2026-10-12: built on another model, shares its files
+                proposal.update(frees_bytes=500, shared_with=["nova-code-qwen38-96k:latest"])
+            self.reply(201, proposal); return
         if self.path.startswith("/models/installed/") and self.path.endswith("/unload"):
             model = self.path[len("/models/installed/"):-len("/unload")].replace("%3A", ":")
             REQUESTS.setdefault("unloaded", []).append(model)
@@ -71,6 +74,9 @@ class Handler(BaseHTTPRequestHandler):
             if self.path.endswith("/deny"):
                 self.reply(202, {"status": "denied"}); return
             outcome = MODE["approve"]
+            if outcome == "shared":
+                self.reply(200, {"status": "deleted", "model": "qwen3:14b", "freed_bytes": 0, "size_bytes": 9276198565,
+                                 "shared_with": ["nova-code-qwen38-96k:latest"]}); return
             if outcome == "deleted":
                 self.reply(200, {"status": "deleted", "model": "qwen3:14b", "freed_bytes": 8589934592, "size_bytes": 9276198565}); return
             if outcome == "blocked":
@@ -130,7 +136,7 @@ QML_CHECK = r'''
         var iconX = icon.mapToItem(row(1), 0, 0).x, detailsEnd = details.mapToItem(row(1), details.width, 0).x
         check(icon.width > 0 && iconX >= detailsEnd, "icon overlaps DETAILS: " + iconX + " vs " + detailsEnd)
         check(icon.mapToItem(row(1), icon.width, 0).x >= row(1).width - Style.spacing.sm - 1, "icons not at the right edge")
-        check(icon.tooltipText === "Delete qwen3:14b from this computer · frees up to 8.6 GiB · asks for approval first", "tooltip: " + icon.tooltipText)
+        check(icon.tooltipText === "Delete qwen3:14b from this computer · frees up to 8.6 GiB (less if another model shares its files) · asks for approval first", "tooltip: " + icon.tooltipText)
         if ("@CAPTURE@") { var done = false; row(1).grabToImage(function(i) { i.saveToFile("@CAPTURE@/installed-row.png"); done = true }); var n = 0; while (!done && n++ < 100) wait(20) }
       })
       test("a blocked model explains why and opens no approval", function() {
@@ -241,6 +247,24 @@ QML_CHECK = r'''
         var lines = findChild(novaPanel, "chatHistoryRepeater"), prev = lines.itemAt(lines.count - 2)
         check(prev.role === "system" && prev.text.indexOf("Freed 10.0 GiB") === 0, "system line not above: " + prev.role + " " + prev.text)
         check(prev.canCopy === false, "system line offers copy")
+      })
+      test("a model that shares its files says what a delete really frees and who keeps them", function() {
+        var models = JSON.parse(JSON.stringify(@MODELS@))
+        models[1].delete_frees_bytes = 500; models[1].shares_files_with = ["nova-code-qwen38-96k:latest"]
+        novaPanel.discoveredModels = models; wait(80)
+        check(child(1, "deleteModelButton").tooltipText === "Delete qwen3:14b from this computer · frees 1 KB (its main files stay: nova-code-qwen38-96k uses them too) · asks for approval first",
+              "tooltip: " + child(1, "deleteModelButton").tooltipText)
+        get("/__approve__/shared"); novaPanel.proposeModelRemoval(models[1]); settle()
+        check(findChild(novaPanel, "approvalSummaryLine").text === "Frees 1 KB (its main files stay: nova-code-qwen38-96k uses them too) · you can download it again later",
+              "line: " + findChild(novaPanel, "approvalSummaryLine").text)
+        novaPanel.decideApproval("approve"); wait(400)
+        var lines = findChild(novaPanel, "chatHistoryRepeater"), found = false
+        for (var i = 0; i < lines.count; i++) {
+          var line = lines.itemAt(i)
+          if (line.role === "system" && line.text === "Deleted qwen3:14b · freed 1 KB · its main files stay because nova-code-qwen38-96k uses them.") found = true
+        }
+        check(found, "shared result missing; last: " + lastChat())
+        get("/__approve__/deleted"); novaPanel.discoveredModels = @MODELS@; wait(80)
       })
       console.warn("REMOVAL_RESULTS " + JSON.stringify(results))
     }

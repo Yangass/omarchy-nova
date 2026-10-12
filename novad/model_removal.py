@@ -48,11 +48,38 @@ def blockers_for(model, *, inventory, selected_model, resident, cli_models):
     return blockers, entry
 
 
+# Files smaller than this (licences, templates, settings) are often identical across
+# unrelated models; only shared model files are worth naming.
+SHARED_FILE_MIN_BYTES = 1 << 20
+
+
+def sharing(model, records):
+    """What deleting `model` frees, and which other models keep its main files.
+
+    `records` are local inventory records with `layers` ({blob digest: size}). Ollama
+    deletes a model's name and only the files no other model uses, so a model built on
+    another (same weights, different settings) frees almost nothing. Returns None when
+    the model's files are unknown.
+    """
+    mine = next((r.get('layers') for r in records or [] if _same(r.get('id'), model)), None)
+    if not isinstance(mine, dict):
+        return None
+    others = [(r['id'], r['layers']) for r in records if not _same(r.get('id'), model) and isinstance(r.get('layers'), dict)]
+    if any(not isinstance(r.get('layers'), dict) for r in records if not _same(r.get('id'), model)):
+        return None  # an unreadable model might share files: don't promise a number
+    used_elsewhere = {digest for _, layers in others for digest in layers}
+    shared_with = sorted(_plain(name) for name, layers in others
+                         if sum(size for digest, size in mine.items() if digest in layers) >= SHARED_FILE_MIN_BYTES)
+    return {"frees_bytes": sum(size for digest, size in mine.items() if digest not in used_elsewhere),
+            "shared_bytes": sum(size for digest, size in mine.items() if digest in used_elsewhere),
+            "shared_with": shared_with}
+
+
 class RemovalStore:
     def __init__(self):
         self.lock, self.items = Lock(), {}
 
-    def propose(self, model, *, inventory, selected_model, resident, cli_models, now=None):
+    def propose(self, model, *, inventory, selected_model, resident, cli_models, now=None, shares=None):
         now = time.time() if now is None else now
         blockers, entry = blockers_for(model, inventory=inventory, selected_model=selected_model,
                                        resident=resident, cli_models=cli_models)
@@ -62,6 +89,8 @@ class RemovalStore:
         proposal = {"status": "proposed", "id": "del_" + secrets.token_urlsafe(24), "model": entry["id"],
                     "size_bytes": size if isinstance(size, int) else None,
                     "digest": entry.get("digest") if isinstance(entry.get("digest"), str) else None,
+                    "frees_bytes": shares["frees_bytes"] if shares else None,
+                    "shared_with": list(shares["shared_with"]) if shares else [],
                     "expires_at": now + TTL_SECONDS}
         with self.lock:
             self.items[proposal["id"]] = {**proposal, "created": now, "decision": None}
@@ -99,7 +128,8 @@ class RemovalStore:
             return 502, {"status": "failed", "error": "still_installed"}
         after = _measure(disk_free)
         freed = max(0, after - before) if before is not None and after is not None else None
-        return 200, {"status": "deleted", "model": model, "freed_bytes": freed, "size_bytes": item["size_bytes"]}
+        return 200, {"status": "deleted", "model": model, "freed_bytes": freed, "size_bytes": item["size_bytes"],
+                     "shared_with": item.get("shared_with", [])}
 
 
 def _measure(disk_free):

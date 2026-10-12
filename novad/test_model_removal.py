@@ -66,7 +66,7 @@ class DecideTests(unittest.TestCase):
 
     def test_approve_deletes_once_and_reports_freed_space(self):
         self.assertEqual(self.decide(), (200, {"status": "deleted", "model": "qwen3:14b", "freed_bytes": 8 * GIB,
-                                                "size_bytes": 9 * GIB}))
+                                                "size_bytes": 9 * GIB, "shared_with": []}))
         self.delete.assert_called_once_with("qwen3:14b")
         # Without a disk measurement NOVA claims nothing about freed space.
         self.store = RemovalStore(); self.id = self.store.propose("qwen3:14b", now=0, **inputs())["id"]
@@ -177,3 +177,66 @@ class EndpointTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SharingTests(unittest.TestCase):
+    """2026-10-12: deleting a base model that a tuned model is built on freed 0.0 GiB with no
+    explanation. NOVA now says up front what a delete frees and which models keep the files."""
+    W, P, LIC = "sha256:" + "a" * 64, "sha256:" + "b" * 64, "sha256:" + "c" * 64
+
+    def records(self):
+        return [
+            {"id": "qwen3.8:27b-q4_K_M", "layers": {self.W: 16 * GIB, self.P: GIB, "sha256:" + "d" * 64: 500, self.LIC: 11_000}},
+            {"id": "nova-code-qwen38-96k:latest", "layers": {self.W: 16 * GIB, self.P: GIB, "sha256:" + "e" * 64: 128, self.LIC: 11_000}},
+            {"id": "llama3.2:1b", "layers": {"sha256:" + "f" * 64: GIB, self.LIC: 11_000}},  # shares only a licence file
+        ]
+
+    def test_a_model_built_on_another_frees_only_its_own_small_files(self):
+        info = model_removal.sharing("qwen3.8:27b-q4_K_M", self.records())
+        self.assertEqual(info, {"frees_bytes": 500, "shared_bytes": 17 * GIB + 11_000,
+                                "shared_with": ["nova-code-qwen38-96k"]})
+
+    def test_tiny_shared_files_do_not_name_unrelated_models(self):
+        info = model_removal.sharing("llama3.2:1b", self.records())
+        self.assertEqual((info["frees_bytes"], info["shared_with"]), (GIB, []))
+
+    def test_latest_tag_and_unknown_files(self):
+        self.assertEqual(model_removal.sharing("nova-code-qwen38-96k", self.records())["shared_with"], ["qwen3.8:27b-q4_K_M"])
+        self.assertIsNone(model_removal.sharing("missing:1b", self.records()))
+        unreadable = self.records() + [{"id": "broken:1b", "layers": None}]
+        self.assertIsNone(model_removal.sharing("llama3.2:1b", unreadable), "an unreadable model might share files")
+
+    def test_proposal_and_result_carry_the_explanation(self):
+        store = model_removal.RemovalStore()
+        inputs = {"inventory": [{"id": "qwen3.8:27b-q4_K_M", "digest": "d1", "metadata": {"size_bytes": 17 * GIB}}],
+                  "selected_model": None, "resident": [], "cli_models": []}
+        shares = model_removal.sharing("qwen3.8:27b-q4_K_M", self.records())
+        proposal = store.propose("qwen3.8:27b-q4_K_M", shares=shares, **inputs)
+        self.assertEqual((proposal["frees_bytes"], proposal["shared_with"]), (500, ["nova-code-qwen38-96k"]))
+        states = [inputs, dict(inputs, inventory=[])]
+        status, result = store.decide(proposal["id"], "approved", recheck=lambda _m: states.pop(0),
+                                      delete=lambda _m: None, disk_free=iter([100, 100]).__next__)
+        self.assertEqual((status, result["freed_bytes"], result["shared_with"]), (200, 0, ["nova-code-qwen38-96k"]))
+
+
+class InventoryLayersTests(unittest.TestCase):
+    def test_local_inventory_lists_each_models_files_only_when_asked(self):
+        import tempfile
+        from pathlib import Path
+        import catalog_observability
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            blobs = {"sha256:" + c * 64: size for c, size in (("1", 2048), ("2", 30), ("3", 10))}
+            (root / "blobs").mkdir()
+            for digest, size in blobs.items():
+                with open(root / "blobs" / digest.replace(":", "-"), "wb") as f: f.truncate(size)
+            manifest = {"schemaVersion": 2, "config": {"digest": "sha256:" + "3" * 64, "size": 10},
+                        "layers": [{"mediaType": "application/vnd.ollama.image.model", "digest": "sha256:" + "1" * 64, "size": 2048},
+                                   {"mediaType": "application/vnd.ollama.image.params", "digest": "sha256:" + "2" * 64, "size": 30}]}
+            path = root / "manifests/registry.ollama.ai/library/tiny/1b"
+            path.parent.mkdir(parents=True)
+            path.write_text(json.dumps(manifest))
+            plain = catalog_observability.local_inventory(root)["records"][0]
+            self.assertNotIn("layers", plain)
+            record = catalog_observability.local_inventory(root, with_layers=True)["records"][0]
+            self.assertEqual((record["id"], record["layers"]), ("tiny:1b", blobs))

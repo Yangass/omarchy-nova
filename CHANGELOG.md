@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.14.4
+
+- **Fix:** since 0.14.1, NOVA's hardware check no longer received graphics-card details
+  from its system-readings helper (the new private key wasn't sent on that internal
+  call), so an NVIDIA card's memory size showed as unknown and model-fit estimates were
+  less accurate. NOVA now sends the key on every internal call, and a test checks that
+  no caller can miss it again.
+- **Coding CLI:** a project opened with OPEN CLI syncs to the repository and branch it
+  was created from (not always NOVA's own).
+
+## 0.14.3
+
+- Deleting a model now says what it really frees. A model built on another one (the same
+  weights with different settings) shares its files, so deleting one of them frees only
+  what no other model uses. The delete tooltip, the approval card and the result now
+  show the actual amount and name the models that keep the shared files, instead of
+  "frees up to …" and a puzzling "freed 0.0 GiB".
+
 ## 0.14.2
 
 From our own security review after the marketplace findings (all hardening, nothing

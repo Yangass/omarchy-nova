@@ -204,18 +204,38 @@ def _read_checkout_head(checkout: Path) -> str | None:
                 (line.split(" ", 1)[0] for line in (git_dir / "packed-refs").read_text(encoding="ascii").splitlines() if line.endswith(" " + ref)), "")
     except (OSError, UnicodeDecodeError): return None
     return head if re.fullmatch(r"[0-9a-f]{40}", head) else None
+CLI_BRANCH = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,99}")
+def _cli_canonical(profile: dict[str, Any]) -> tuple[Path, str]:
+    """The project's trusted source repository and canonical branch.
+    identity.json is written by the launcher outside the agent's sandbox; it may name the
+    repository the project was cloned from (NOVA, Pulsar, ...) and its branch. Anything
+    missing or odd falls back to the launcher's own repository and master."""
+    project = Path(profile["project"]).resolve()
+    canonical, branch = Path(profile["launcher"]).resolve().parents[2], "master"
+    try: identity = json.loads((project / "identity.json").read_text())
+    except (OSError, ValueError): identity = {}
+    source = identity.get("source_repository") if isinstance(identity, dict) else None
+    if isinstance(source, str) and Path(source).is_absolute():
+        candidate = Path(source).resolve()
+        if (candidate / ".git").is_dir() and not candidate.is_relative_to(project) and _cli_owned_path(candidate, directory=True):
+            canonical = candidate
+    named = identity.get("canonical_branch") if isinstance(identity, dict) else None
+    if isinstance(named, str) and CLI_BRANCH.fullmatch(named) and ".." not in named:
+        branch = named
+    return canonical, branch
 def cli_project_sync(profile: dict[str, Any]) -> str:
-    """Whether an interactive launch will fast-forward the project to canonical master.
-    Git runs only in the trusted canonical repo (the launcher's own repository)."""
-    canonical = Path(profile["launcher"]).resolve().parents[2]
+    """Whether an interactive launch will fast-forward the project to its canonical branch.
+    Git runs only in the trusted canonical repo, never in the agent's checkout."""
+    canonical, branch = _cli_canonical(profile)
     head = _read_checkout_head(Path(profile["project"]) / "project")
     if head is None or not (canonical / ".git").is_dir(): return "unknown"
     def git(*args: str) -> subprocess.CompletedProcess:
         return subprocess.run(["git", "-C", str(canonical), *args], capture_output=True, text=True, timeout=10)
+    ref = "refs/heads/" + branch
     try:
-        master = git("rev-parse", "--verify", "-q", "refs/heads/master").stdout.strip()
-        if head == master: return "up_to_date"
-        return "will_update" if git("merge-base", "--is-ancestor", head, "refs/heads/master").returncode == 0 else "unreviewed_commits"
+        tip = git("rev-parse", "--verify", "-q", ref).stdout.strip()
+        if head == tip: return "up_to_date"
+        return "will_update" if git("merge-base", "--is-ancestor", head, ref).returncode == 0 else "unreviewed_commits"
     except (OSError, subprocess.SubprocessError): return "unknown"
 def list_cli_profiles() -> dict[str, Any]:
     entries, error = load_cli_profiles()

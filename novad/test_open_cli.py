@@ -169,6 +169,40 @@ class ProjectSyncTests(ProfileFixture):
         self.assertTrue(calls and all(str(self.checkout) not in " ".join(map(str, c)) for c in calls))
 
 
+class ProjectIdentityTests(ProfileFixture):
+    """2026-10-12: a Pulsar project (repo ~/pulsar, branch main) must not be compared with NOVA's master."""
+    def setUp(self):
+        super().setUp()
+        self.pgrep.side_effect = REAL_RUN
+        self.pulsar = self.root / "pulsar"
+        _git(self.root, "init", "-q", "-b", "main", str(self.pulsar))
+        (self.pulsar / "a").write_text("a"); _git(self.pulsar, "add", "-A")
+        _git(self.pulsar, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "a")
+        self.checkout = self.project / "project"
+        _git(self.root, "clone", "-q", str(self.pulsar), str(self.checkout))
+
+    def identity(self, **values):
+        (self.project / "identity.json").write_text(json.dumps(values))
+
+    def test_identity_names_the_source_repository_and_branch(self):
+        self.identity(source_repository=str(self.pulsar), canonical_branch="main")
+        self.assertEqual(actions.cli_project_sync(self.profile()), "up_to_date")
+        (self.pulsar / "b").write_text("b"); _git(self.pulsar, "add", "-A")
+        _git(self.pulsar, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "b")
+        self.assertEqual(actions.cli_project_sync(self.profile()), "will_update")
+
+    def test_odd_identities_fall_back_to_the_launcher_repository(self):
+        for values in ({"source_repository": "relative/path"}, {"source_repository": str(self.checkout)},
+                       {"source_repository": str(self.pulsar), "canonical_branch": "../../x"}, {}):
+            with self.subTest(values=values):
+                self.identity(**values)
+                canonical, branch = actions._cli_canonical(self.profile())
+                if values.get("canonical_branch") == "../../x":
+                    self.assertEqual((canonical, branch), (self.pulsar.resolve(), "master"))
+                else:
+                    self.assertEqual((canonical, branch), (Path(self.profile()["launcher"]).resolve().parents[2], "master"))
+
+
 class LaunchTests(ProfileFixture):
     def launch(self, snapshot=None, process=None):
         with patch.dict(actions.os.environ, SESSION, clear=False), \
