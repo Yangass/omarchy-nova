@@ -67,6 +67,16 @@ class Handler(BaseHTTPRequestHandler):
             if mode == "online":
                 self.reply(200, {"configured": True, "error": None, "checked_at": "fixture",
                                  "profiles": [profile()] + ONLINE}); return
+            if mode in ("projects", "other-running"):
+                running = mode == "other-running"
+                pulsar = profile(id="qwen-pulsar-dev", label="Qwen Code · Pulsar dev project", project_label="Pulsar dev project",
+                                 project_place="~/.local/state/pulsar-dev", last_used=1_700_000_000, sync_source="pulsar",
+                                 sync_branch="main", project_sync="up_to_date", running=running,
+                                 available=not running, blocked="cli_session_active" if running else None)
+                nova = profile(project_place="~/.local/state/nova-dev", last_used=1_700_100_000, sync_source="nova",
+                               available=not running, blocked="other_cli_session_active" if running else None)
+                self.reply(200, {"configured": True, "error": None, "checked_at": "fixture", "client_active": running,
+                                 "profiles": [pulsar, nova]}); return
             item = {"available": profile(),
                     "running": profile(running=True, available=False, blocked="cli_session_active"),
                     "conflict": profile(available=False, blocked="conflicting_resident_model",
@@ -298,6 +308,38 @@ QML_CHECK = r'''
         check(!child(0, "openCliButton").visible, "OPEN CLI shown without any profile")
         profiles("available"); wait(200)
         check(child(0, "openCliButton").visible, "OPEN CLI hidden with a profile")
+      })
+      test("several projects: the card lists them, the last used is chosen, keys and clicks choose", function() {
+        get("/__launch__/dispatched"); get("/__requests__/reset"); profiles("projects")
+        click(child(0, "openCliButton"))
+        var card = child(0, "cliConfirmCard"), picker = child(0, "cliProjectPicker"), rows = child(0, "cliProjectRepeater")
+        check(card.visible && picker.visible && rows.count === 2, "picker missing: " + picker.visible + " " + rows.count)
+        check(!child(0, "cliSyncText").visible, "single-project sync line shown with a picker")
+        check(card.profile.id === "qwen-nova-dev" && rows.itemAt(1).chosen && !rows.itemAt(0).chosen, "last used not chosen: " + card.profile.id)
+        check(findChild(rows.itemAt(0), "cliProjectName").text === "Pulsar dev project", "row name: " + findChild(rows.itemAt(0), "cliProjectName").text)
+        capture("project-picker")
+        wait(350); keyClick(Qt.Key_Up); wait(30)
+        check(card.profile.id === "qwen-pulsar-dev" && rows.itemAt(0).chosen, "Up did not choose Pulsar: " + card.profile.id)
+        check(card.visible && get("/__requests__").launch.length === 0, "choosing launched")
+        click(rows.itemAt(1)); wait(30)
+        check(card.profile.id === "qwen-nova-dev", "click did not choose NOVA: " + card.profile.id)
+        keyClick(Qt.Key_Down); keyClick(Qt.Key_Down); wait(30)
+        check(card.profile.id === "qwen-nova-dev", "Down went past the last row")
+        keyClick(Qt.Key_Up); wait(30); keyClick(Qt.Key_Return); wait(300)
+        var requests = get("/__requests__")
+        check(requests.launch.length === 1 && JSON.stringify(requests.launch[0]) === JSON.stringify({profile_id:"qwen-pulsar-dev", model:"@ALIAS@"}),
+              "wrong launch: " + JSON.stringify(requests.launch))
+        get("/__requests__/reset")
+      })
+      test("one Qwen at a time: another project's CLI blocks with its name", function() {
+        profiles("other-running")
+        var button = child(0, "openCliButton")
+        check(button.text === "CLI RUNNING" && !button.launchable, "running state wrong: " + button.text)
+        click(button)
+        check(child(0, "cliStatusText").text === "The coding CLI for Pulsar dev project is open. NOVA opens one at a time; close it first.",
+              "reason: " + child(0, "cliStatusText").text)
+        check(!child(0, "cliConfirmCard").visible && get("/__requests__").launch.length === 0, "launched while another ran")
+        profiles("available")
       })
       console.warn("OPEN_CLI_RESULTS " + JSON.stringify(results))
     }

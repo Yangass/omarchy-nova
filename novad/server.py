@@ -477,9 +477,7 @@ REMOVALS = RemovalStore()
 def removal_inputs(model: str) -> dict[str, Any]:
     """Fresh state for deleting a model (QWEN-11); unknowns stay None, which blocks."""
     status, payload = cli_profiles_state()
-    cli_models = None if status != HTTPStatus.OK else [
-        p.get("model") for p in payload.get("profiles", [])
-        if isinstance(p, dict) and p.get("running") is True and isinstance(p.get("model"), str)]
+    cli_models = None if status != HTTPStatus.OK else cli_busy_models(payload)
     return {"inventory": model_inventory(), "selected_model": ACTIVE_MODEL if has_active_selection() else None,
             "resident": resident_models(), "cli_models": cli_models}
 
@@ -507,7 +505,7 @@ def unload_model(model: str) -> tuple[int, dict[str, Any]]:
     except Exception: status, payload = 0, {}
     if status != HTTPStatus.OK:
         return HTTPStatus.CONFLICT, {"status": "blocked", "blockers": ["CLI_STATE_UNKNOWN"]}
-    if any(isinstance(p, dict) and p.get("running") and p.get("model") == model for p in payload.get("profiles", [])):
+    if model in cli_busy_models(payload):
         return HTTPStatus.CONFLICT, {"status": "blocked", "blockers": ["CLI_SESSION_RUNNING"]}
     try: resident = PROVIDERS[inventory_provider_id()].running_models()
     except (ProviderUnavailable, ProviderOperationFailed):
@@ -608,12 +606,24 @@ def cli_profiles_state() -> tuple[int, dict[str, Any]]:
         blocked = None
         if item.get("valid") is not True: blocked = item.get("error") or "invalid_profile"
         elif item.get("running"): blocked = "cli_session_active"
+        # One Qwen at a time: another project's CLI (or one NOVA can't place) is open.
+        elif payload.get("client_active") is True: blocked = "other_cli_session_active"
         elif resident is None: blocked = "provider_unavailable"
         elif any(name != item.get("model") for name in resident): blocked = "conflicting_resident_model"
         elif free is not None and free < CLI_MIN_FREE_BYTES: blocked = "low_disk"
         profiles.append({**item, "available": blocked is None, "blocked": blocked,
                          "conflicting_models": [n for n in resident or [] if n != item.get("model")]})
-    return HTTPStatus.OK, {"configured": payload.get("configured") is True, "error": payload.get("error"), "profiles": profiles, "checked_at": utc_now()}
+    return HTTPStatus.OK, {"configured": payload.get("configured") is True, "error": payload.get("error"), "profiles": profiles,
+                           "client_active": payload.get("client_active") is True, "checked_at": utc_now()}
+
+
+def cli_busy_models(payload: dict[str, Any]) -> list[str]:
+    """Models a running coding CLI uses. A client NOVA can't place in a project counts for
+    every local profile's model (deleting or unloading must never pull a model from under it)."""
+    local = [p for p in payload.get("profiles", []) if isinstance(p, dict) and p.get("kind") != "online" and isinstance(p.get("model"), str)]
+    running = [p["model"] for p in local if p.get("running") is True]
+    if not running and payload.get("client_active") is True: running = [p["model"] for p in local]
+    return running
 
 def upstream_json(url: str, *, method: str = "GET", payload: dict[str, Any] | None = None, timeout: int = 3) -> tuple[int, dict[str, Any]]:
     body = json.dumps(payload, separators=(",", ":")).encode() if payload is not None else None
@@ -807,7 +817,7 @@ class OwnerOnlyHTTPServer(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "novad/0.14.4"
+    server_version = "novad/0.14.6"
     def log_message(self, _format: str, *_args: Any) -> None: return
     def send_json(self, status: HTTPStatus, payload: dict[str, Any]) -> bool:
         body = json.dumps(payload, separators=(",", ":")).encode()

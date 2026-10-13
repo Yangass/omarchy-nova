@@ -8,6 +8,9 @@
 # content height changes: either check_ui02a's two scroll cases or check_open_cli
 # "card in view" (and once check_short_screen "telemetry again");
 # check_approval_interaction is occasionally timing-flaky.
+# While a local model is generating (e.g. a Qwen worker session), the full run is slow
+# and several checks time out (2026-10-12: 7 failed, all passed rerun in small batches);
+# rerun failures a few at a time before blaming a change.
 set -uo pipefail
 tools=$(cd -- "$(dirname -- "$0")" && pwd)
 work=$(mktemp -d "${TMPDIR:-/tmp}/nova-qml-checks.XXXXXX")

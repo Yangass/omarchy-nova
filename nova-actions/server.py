@@ -23,6 +23,8 @@ TERMINAL_SESSION_VARIABLES = ("XDG_RUNTIME_DIR", "WAYLAND_DISPLAY", "HYPRLAND_IN
 # Coding CLI profiles are explicit user configuration; the command is built here
 # from validated paths, never from model names, chat output or request strings.
 CLI_PROFILES_PATH = Path.home() / ".config" / "nova" / "cli-profiles.json"
+# When each coding CLI profile was last launched (picker default, "last opened" in its row).
+CLI_LAST_USED_PATH = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "nova" / "cli-last-used.json"
 CLI_TOOLS = {"qwen-code"}
 ONLINE_CLI_TOOLS = {"claude-code": "claude", "codex": "codex"}
 # Omarchy tags TUI.* windows as terminals (default/hypr/apps/terminals.lua), so its
@@ -182,9 +184,14 @@ def load_cli_profiles() -> tuple[list[tuple[dict[str, Any], dict[str, Any] | Non
         profile, error = validate_cli_profile(item)
         entries.append((item if isinstance(item, dict) else {}, profile, error))
     return entries, None
+def cli_client_active() -> bool:
+    """A Qwen client is running somewhere: NOVA opens one at a time (the launcher agrees)."""
+    return subprocess.run(["pgrep", "-u", str(USER_UID), "-f", CLI_CLIENT_PATTERN], capture_output=True).returncode == 0
 def cli_session_active(profile: dict[str, Any]) -> bool:
     # A live client anywhere, or a held project lock from this boot, means busy.
-    if subprocess.run(["pgrep", "-u", str(USER_UID), "-f", CLI_CLIENT_PATTERN], capture_output=True).returncode == 0: return True
+    return cli_client_active() or cli_project_locked(profile)
+def cli_project_locked(profile: dict[str, Any]) -> bool:
+    """This project's CLI is open: its launcher holds the project lock from this boot."""
     try: record = json.loads((Path(profile["project"]) / "lock").read_text() or "null")
     except (OSError, ValueError): return False
     if not isinstance(record, dict) or record.get("uid") != USER_UID or not isinstance(record.get("pid"), int): return False
@@ -211,18 +218,20 @@ def _cli_canonical(profile: dict[str, Any]) -> tuple[Path, str]:
     repository the project was cloned from (NOVA, Pulsar, ...) and its branch. Anything
     missing or odd falls back to the launcher's own repository and master."""
     project = Path(profile["project"]).resolve()
-    canonical, branch = Path(profile["launcher"]).resolve().parents[2], "master"
+    fallback = Path(profile["launcher"]).resolve().parents[2], "master"
     try: identity = json.loads((project / "identity.json").read_text())
     except (OSError, ValueError): identity = {}
-    source = identity.get("source_repository") if isinstance(identity, dict) else None
-    if isinstance(source, str) and Path(source).is_absolute():
-        candidate = Path(source).resolve()
-        if (candidate / ".git").is_dir() and not candidate.is_relative_to(project) and _cli_owned_path(candidate, directory=True):
-            canonical = candidate
-    named = identity.get("canonical_branch") if isinstance(identity, dict) else None
-    if isinstance(named, str) and CLI_BRANCH.fullmatch(named) and ".." not in named:
-        branch = named
-    return canonical, branch
+    if not isinstance(identity, dict): return fallback
+    # Only identities written since 2026-10-12 record a branch with their source; an older
+    # one names the clone it was first copied from (NOVA's: a stale workflow clone) and
+    # keeps following the launcher's repository, as before (launch.py project_source).
+    named, source = identity.get("canonical_branch"), identity.get("source_repository")
+    if not (isinstance(named, str) and CLI_BRANCH.fullmatch(named) and ".." not in named): return fallback
+    if not (isinstance(source, str) and Path(source).is_absolute()): return fallback
+    candidate = Path(source).resolve()
+    if (candidate / ".git").is_dir() and not candidate.is_relative_to(project) and _cli_owned_path(candidate, directory=True):
+        return candidate, named
+    return fallback
 def cli_project_sync(profile: dict[str, Any]) -> str:
     """Whether an interactive launch will fast-forward the project to its canonical branch.
     Git runs only in the trusted canonical repo, never in the agent's checkout."""
@@ -237,19 +246,55 @@ def cli_project_sync(profile: dict[str, Any]) -> str:
         if head == tip: return "up_to_date"
         return "will_update" if git("merge-base", "--is-ancestor", head, ref).returncode == 0 else "unreviewed_commits"
     except (OSError, subprocess.SubprocessError): return "unknown"
+def cli_last_used() -> dict[str, int]:
+    """Profile id -> seconds since 1970 of its last launch; a missing or odd file is empty."""
+    try:
+        if CLI_LAST_USED_PATH.is_symlink() or CLI_LAST_USED_PATH.stat().st_size > 16_384: return {}
+        data = json.loads(CLI_LAST_USED_PATH.read_text())
+    except (OSError, ValueError, UnicodeDecodeError): return {}
+    entries = data.get("profiles") if isinstance(data, dict) and data.get("schema") == 1 else None
+    if not isinstance(entries, dict): return {}
+    return {key: value for key, value in entries.items()
+            if isinstance(key, str) and CLI_PROFILE_ID.fullmatch(key) and isinstance(value, int) and not isinstance(value, bool) and value > 0}
+def remember_cli_launch(profile_id: str) -> None:
+    """Record a launch (private file, replaced atomically); failure only loses the hint."""
+    entries = cli_last_used(); entries[profile_id] = int(time.time())
+    entries = dict(sorted(entries.items(), key=lambda item: -item[1])[:16])
+    temporary = CLI_LAST_USED_PATH.with_name(f".{CLI_LAST_USED_PATH.name}.{os.getpid()}.tmp")
+    try:
+        CLI_LAST_USED_PATH.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        temporary.unlink(missing_ok=True)
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(descriptor, "w") as file: json.dump({"schema": 1, "profiles": entries}, file)
+        os.replace(temporary, CLI_LAST_USED_PATH)
+    except OSError:
+        try: temporary.unlink(missing_ok=True)
+        except OSError: pass
+def cli_place(project: str) -> str:
+    """The project folder for display: ~/... under the home folder, else only …/its-name."""
+    path, home = Path(project), Path.home()
+    if path == home: return "~"
+    try: return "~/" + str(path.relative_to(home))
+    except ValueError: return "…/" + path.name
 def list_cli_profiles() -> dict[str, Any]:
     entries, error = load_cli_profiles()
+    last_used = cli_last_used()
     profiles = []
     for raw, profile, problem in entries:
+        place = cli_place(profile["project"]) if profile else None
         if raw.get("provider") == "online":
             public = {key: raw.get(key) for key in ("id", "label", "tool", "provider", "project_label") if isinstance(raw.get(key), str)}
             public.update(kind="online", valid=profile is not None, error=problem, running=False, project_sync="not_applicable")
         else:
             public = {key: raw.get(key) for key in ("id", "label", "tool", "provider", "model", "project_label") if isinstance(raw.get(key), str)}
-            public.update(kind="local", valid=profile is not None, error=problem, running=bool(profile) and cli_session_active(profile),
+            public.update(kind="local", valid=profile is not None, error=problem, running=bool(profile) and cli_project_locked(profile),
                           project_sync=cli_project_sync(profile) if profile else "unknown")
+            if profile:
+                canonical, branch = _cli_canonical(profile)
+                public.update(sync_source=canonical.name, sync_branch=branch)
+        public.update(project_place=place, last_used=last_used.get(public.get("id")))
         profiles.append(public)
-    return {"configured": CLI_PROFILES_PATH.exists(), "error": error, "profiles": profiles}
+    return {"configured": CLI_PROFILES_PATH.exists(), "error": error, "profiles": profiles, "client_active": cli_client_active()}
 def open_coding_cli(snapshot: dict[str, Any]) -> dict[str, Any]:
     base = {"action": "open_coding_cli", "profile_id": snapshot.get("profile_id")}
     if set(snapshot) != {"profile_id", "model"} or not all(isinstance(snapshot[key], str) for key in snapshot): return {**base, "status": "failure", "error": "invalid_cli_request"}
@@ -278,6 +323,7 @@ def open_coding_cli(snapshot: dict[str, Any]) -> dict[str, Any]:
         except subprocess.TimeoutExpired: code = None  # still running: dispatched, as for fixed apps
     except (OSError, subprocess.SubprocessError): return {**base, "status": "failure", "error": "launch_failed", "window_observation": "not_observed"}
     if code not in (0, None): return {**base, "status": "failure", "error": "launcher_failed", "launcher_exit_code": code, "window_observation": "not_observed"}
+    remember_cli_launch(profile["id"])
     return {**base, "status": "dispatched", "label": profile["label"], **extra, "launch_invoked": True, "launcher_exit_code": code, "window_observation": "not_observed", "message": message}
 def body(handler: BaseHTTPRequestHandler) -> dict[str, Any] | None:
     try: size=int(handler.headers.get("Content-Length") or "0")
@@ -381,7 +427,7 @@ class OwnerOnlyHTTPServer(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version="nova-actions/0.6.0"
+    server_version="nova-actions/0.7.0"
     def log_message(self,*_: Any)->None:return
     def reply(self,status:HTTPStatus,value:dict[str,Any])->None:
         raw=json.dumps(value,separators=(",",":")).encode(); self.send_response(status); self.send_header("Content-Type","application/json"); self.send_header("Content-Length",str(len(raw))); self.send_header("Cache-Control","no-store"); self.end_headers(); self.wfile.write(raw)

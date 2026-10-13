@@ -2406,6 +2406,8 @@ Ui.Panel {
   property var cliState: null
   property bool cliRequesting: false
   property string cliConfirmModel: ""
+  // The project chosen in the confirm card when one model has several (last used first).
+  property string cliChosenProfileId: ""
   // Enter launches from the confirm card only after the key that opened it is
   // released (or 300 ms pass with no Enter held), as with approvals.
   property bool cliConfirmArmed: false
@@ -2447,14 +2449,54 @@ Ui.Panel {
   readonly property var onlineCliItems: !cliState ? [] : cliState.profiles.filter(function(p) {
       return p && p.kind === "online" && typeof p.id === "string" }).map(function(p) {
       return { id: "online:" + p.id, provider: "online", profileId: p.id } })
+  // Every profile for this model (one per project), in the file's order.
+  function cliProfilesFor(item) {
+    if (!cliState || !item) return []
+    return cliState.profiles.filter(function(profile) {
+      if (!profile) return false
+      if (item.provider === "online") return profile.kind === "online" && profile.id === item.profileId
+      return profile.model === item.id && profile.provider === item.provider
+    })
+  }
+  // First choice: the project used last that can open now, else the first that can, else
+  // the one used last (its reason is then shown).
+  function cliDefaultProfile(profiles) {
+    if (!profiles.length) return null
+    var byUse = profiles.slice().sort(function(a, b) { return (b.last_used || 0) - (a.last_used || 0) })
+    for (var i = 0; i < byUse.length; i++) if (byUse[i].available === true && byUse[i].last_used) return byUse[i]
+    for (var j = 0; j < profiles.length; j++) if (profiles[j].available === true) return profiles[j]
+    return byUse[0].last_used ? byUse[0] : profiles[0]
+  }
+  // The profile OPEN CLI acts on: the card's choice while it is open, else the default.
   function cliProfileFor(item) {
-    if (!cliState || !item) return null
-    for (var i = 0; i < cliState.profiles.length; i++) {
-      var profile = cliState.profiles[i]
-      if (item.provider === "online") { if (profile && profile.kind === "online" && profile.id === item.profileId) return profile; continue }
-      if (profile && profile.model === item.id && profile.provider === item.provider) return profile
-    }
-    return null
+    var profiles = cliProfilesFor(item)
+    if (item && cliConfirmModel === item.id && cliChosenProfileId !== "")
+      for (var i = 0; i < profiles.length; i++) if (profiles[i].id === cliChosenProfileId) return profiles[i]
+    return cliDefaultProfile(profiles)
+  }
+  function moveCliChoice(item, step) {
+    var profiles = cliProfilesFor(item), current = cliProfileFor(item)
+    if (profiles.length < 2 || !current) return
+    var index = profiles.indexOf(current)
+    cliChosenProfileId = profiles[Math.max(0, Math.min(profiles.length - 1, index + step))].id
+  }
+  // "2 h ago", "yesterday", "3 Oct" for a time in seconds since 1970.
+  function cliAgo(seconds) {
+    if (typeof seconds !== "number" || seconds <= 0) return "not opened from NOVA yet"
+    var elapsed = Math.max(0, Date.now() / 1000 - seconds)
+    if (elapsed < 60) return "last opened just now"
+    if (elapsed < 3600) return "last opened " + Math.floor(elapsed / 60) + " min ago"
+    var then = new Date(seconds * 1000), today = new Date()
+    var days = Math.round((new Date(today.getFullYear(), today.getMonth(), today.getDate()) - new Date(then.getFullYear(), then.getMonth(), then.getDate())) / 86400000)
+    if (days === 0) return "last opened " + Math.floor(elapsed / 3600) + " h ago"
+    if (days === 1) return "last opened yesterday"
+    if (days < 7) return "last opened " + days + " days ago"
+    return "last opened " + Qt.formatDate(then, then.getFullYear() === today.getFullYear() ? "d MMM" : "d MMM yyyy")
+  }
+  function cliRunningProjectLabel() {
+    if (!cliState) return ""
+    var running = cliState.profiles.filter(function(p) { return p && p.running === true && typeof p.project_label === "string" })
+    return running.length ? running[0].project_label : ""
   }
   // A running coding CLI loads its own model on its first request; meanwhile NOVA
   // offers no second load and says what is happening (Konstantin, 2026-10-06).
@@ -2462,8 +2504,11 @@ Ui.Panel {
     return !!cliState && typeof id === "string" && id !== "" && cliState.profiles.some(function(profile) {
       return profile && profile.running === true && profile.model === id })
   }
-  function cliRunning(item) { var profile = cliProfileFor(item); return !!profile && profile.running === true }
-  function cliCanLaunch(item) { var profile = cliProfileFor(item); return !!profile && profile.available === true && !cliRequesting }
+  function cliRunning(item) { return cliProfilesFor(item).some(function(profile) { return profile.running === true }) }
+  // OPEN CLI is launchable when any project for the model can open; the card's LAUNCH
+  // when the chosen one can.
+  function cliCanLaunch(item) { return !cliRequesting && cliProfilesFor(item).some(function(profile) { return profile.available === true }) }
+  function cliChosenCanLaunch(item) { var profile = cliProfileFor(item); return !!profile && profile.available === true && !cliRequesting }
   function cliUnavailableReason(item) {
     if (!cliState) return "Coding CLI availability is unknown: NOVA's action service did not answer."
     var profile = cliProfileFor(item)
@@ -2473,8 +2518,15 @@ Ui.Panel {
       if (!configured.length) return "No coding CLI is configured. Profiles live in ~/.config/nova/cli-profiles.json."
       return "No coding CLI profile for this model. Configured for: " + configured.join(", ") + "."
     }
+    return cliReasonFor(profile)
+  }
+  // Why this one profile can't open now ("" when it can).
+  function cliReasonFor(profile) {
+    if (!profile || profile.available === true) return ""
+    var other = cliRunningProjectLabel()
     var reasons = {
       cli_session_active: "A coding CLI session is already running.",
+      other_cli_session_active: (other ? "The coding CLI for " + other + " is open." : "A Qwen coding CLI is already open.") + " NOVA opens one at a time; close it first.",
       conflicting_resident_model: "Blocked: " + (profile.conflicting_models || []).join(", ") + " is loaded in GPU memory. The CLI worker needs the GPU to itself.",
       provider_unavailable: "Ollama is not reachable, so the model cannot be checked.",
       low_disk: "Less than 16 GiB of free disk; the CLI worker keeps that reserve.",
@@ -2485,21 +2537,37 @@ Ui.Panel {
       unsupported_tool: "NOVA does not know this CLI. Supported online CLIs: Claude Code, Codex.",
       invalid_profile: "The CLI profile is incomplete or has unknown fields."
     }
-    if (profile.available === true) return ""
     return reasons[profile.blocked] || ("The CLI profile needs attention: " + String(profile.blocked || "unknown") + ".")
   }
+  // The repository and branch a project follows, e.g. "NOVA master", "Pulsar main".
+  function cliSyncTarget(profile) {
+    var source = profile && typeof profile.sync_source === "string" && profile.sync_source !== "" ? profile.sync_source : "nova"
+    var branch = profile && typeof profile.sync_branch === "string" && profile.sync_branch !== "" ? profile.sync_branch : "master"
+    var name = source.toLowerCase() === "nova" ? "NOVA" : source.charAt(0).toUpperCase() + source.slice(1)
+    return name + " " + branch
+  }
   function cliSyncSummary(profile) {
-    var state = profile ? profile.project_sync : ""
-    if (state === "up_to_date") return "CODE  Project is up to date with NOVA master."
-    if (state === "will_update") return "CODE  Project will update to the latest NOVA master (skipped if it has uncommitted changes)."
+    var state = profile ? profile.project_sync : "", target = cliSyncTarget(profile)
+    if (state === "up_to_date") return "CODE  Project is up to date with " + target + "."
+    if (state === "will_update") return "CODE  Project will update to the latest " + target + " (skipped if it has uncommitted changes)."
     if (state === "unreviewed_commits") return "CODE  Project has commits not yet reviewed; it will not be updated."
     return "CODE  Update status unknown; the launcher checks again and never overwrites work."
+  }
+  // One line per project row in the picker.
+  function cliSyncShort(profile) {
+    var state = profile ? profile.project_sync : "", target = cliSyncTarget(profile)
+    if (state === "up_to_date") return "up to date with " + target
+    if (state === "will_update") return "updates to the latest " + target + " on open"
+    if (state === "unreviewed_commits") return "has commits not yet reviewed; not updated"
+    return "update status checked on open"
   }
   function beginCliLaunch(item) {
     if (!cliCanLaunch(item)) return
     cliStatus = ""
     cliConfirmArmed = false
     cliConfirmReturnSeen = false
+    var first = cliDefaultProfile(cliProfilesFor(item))
+    cliChosenProfileId = first ? first.id : ""
     cliConfirmModel = item.id
     cliConfirmArmTimer.restart()
   }
@@ -2512,7 +2580,7 @@ Ui.Panel {
     var item = null
     var items = discoveredModels.concat(onlineCliItems)
     for (var i = 0; i < items.length; i++) if (items[i] && items[i].id === cliConfirmModel) item = items[i]
-    if (item && cliCanLaunch(item)) confirmCliLaunch(item)
+    if (item && cliChosenCanLaunch(item)) confirmCliLaunch(item)
     return true
   }
   // Scroll the model list so the whole item (the Open CLI card) is visible.
@@ -2533,7 +2601,7 @@ Ui.Panel {
   }
   function confirmCliLaunch(item) {
     var profile = cliProfileFor(item)
-    if (!profile || !cliCanLaunch(item)) { cliConfirmModel = ""; return }
+    if (!profile || !cliChosenCanLaunch(item)) { cliConfirmModel = ""; return }
     cliRequesting = true
     cliConfirmModel = ""
     cliStatusModel = item.id
@@ -3316,7 +3384,7 @@ Ui.Panel {
   Timer { id: cliOnlineStatusClear; interval: 12000; onTriggered: if (root.cliStatusModel.indexOf("online:") === 0 && !root.cliStatusFailed) root.cliStatus = "" }
   Timer { id: cliConfirmArmTimer; interval: 300; onTriggered: if (root.cliConfirmModel !== "" && !root.cliConfirmReturnSeen) root.cliConfirmArmed = true }
   // While a CLI session runs, notice when it ends so CLI RUNNING turns back into OPEN CLI.
-  readonly property bool cliSessionRunning: !!cliState && cliState.profiles.some(function(profile) { return profile && profile.running === true })
+  readonly property bool cliSessionRunning: !!cliState && (cliState.client_active === true || cliState.profiles.some(function(profile) { return profile && profile.running === true }))
   Timer {
     objectName: "cliRunningWatch"; interval: 5000; repeat: true
     running: root.opened && root.cliSessionRunning && !root.acceptancePreview
@@ -3360,6 +3428,52 @@ Ui.Panel {
     fontSize: Style.font.bodySmall
     horizontalPadding: Math.max(4, Style.spacing.controlPaddingX * 0.7)
     verticalPadding: Math.max(2, Style.spacing.controlPaddingY * 0.33)
+  }
+
+  // Marketplace review #11195 (2026-10-13): on released Qt (6.11.2, 6.12.0) every editable
+  // TextInput reads the whole clipboard text when the clipboard changes, with no size limit
+  // and no overall deadline (QQuickTextInput::q_canPasteChanged; fixed upstream 2026-09-13,
+  // not released yet). The shell receives clipboard offers whenever any of its surfaces has
+  // the keyboard, so another clipboard owner could grow or stall the shared shell before
+  // anything is pasted. A read-only field keeps Qt off the clipboard: NOVA's fields stay
+  // read-only until the user presses a key or the mouse in them, and turn read-only again
+  // when hidden or when the panel closes. Qt draws no caret in a read-only field, so the
+  // field draws its own (1 px in the text colour, blinking like Qt's).
+  component GuardedTextField: Ui.TextField {
+    id: guardedField
+    property bool userEditing: false
+    readOnly: !(userEditing && root.opened && visible)
+    cursorVisible: activeFocus
+    onVisibleChanged: if (!visible) userEditing = false
+    onPressed: userEditing = true
+    Keys.onPressed: function(event) { if (root.keyStartsEditing(event)) guardedField.userEditing = true }
+    Connections { target: root; function onOpenedChanged() { if (!root.opened) guardedField.userEditing = false } }
+    cursorDelegate: Rectangle {
+      id: guardedCaret
+      property bool blinkOn: true
+      width: 1
+      color: guardedField.color
+      visible: guardedField.activeFocus && blinkOn
+      function restartBlink() { blinkOn = true; blinkTimer.restart() }
+      Timer {
+        id: blinkTimer
+        interval: Math.max(100, Qt.styleHints.cursorFlashTime / 2)
+        running: guardedField.activeFocus && Qt.styleHints.cursorFlashTime >= 2
+        repeat: true
+        onTriggered: guardedCaret.blinkOn = !guardedCaret.blinkOn
+      }
+      Connections {
+        target: guardedField
+        function onCursorPositionChanged() { guardedCaret.restartBlink() }
+        function onTextChanged() { guardedCaret.restartBlink() }
+        function onActiveFocusChanged() { guardedCaret.restartBlink() }
+      }
+    }
+  }
+  function keyStartsEditing(event) {
+    // Keys that only move focus, submit or close never make a field editable; modifiers wait for the key they modify.
+    return [Qt.Key_Escape, Qt.Key_Tab, Qt.Key_Backtab, Qt.Key_Return, Qt.Key_Enter, Qt.Key_Shift, Qt.Key_Control,
+            Qt.Key_Alt, Qt.Key_AltGr, Qt.Key_Meta, Qt.Key_Super_L, Qt.Key_Super_R, Qt.Key_CapsLock].indexOf(event.key) < 0
   }
 
   component AcquisitionProgress: Column {
@@ -5123,6 +5237,9 @@ Ui.Panel {
                         Keys.onReturnPressed: function(event) { root.handleCliConfirmShortcut("launch"); event.accepted = true }
                         Keys.onEnterPressed: function(event) { root.handleCliConfirmShortcut("launch"); event.accepted = true }
                         Keys.onEscapePressed: function(event) { root.handleCliConfirmShortcut("cancel"); event.accepted = true }
+                        Keys.onUpPressed: function(event) { root.moveCliChoice(modelData, -1); event.accepted = true }
+                        Keys.onDownPressed: function(event) { root.moveCliChoice(modelData, 1); event.accepted = true }
+                        readonly property var projects: visible ? root.cliProfilesFor(modelData) : []
                         onHeightChanged: if (visible) Qt.callLater(function() { root.revealInModelList(cliConfirmCard) })
                         width: parent.width
                         height: visible ? cliConfirmColumn.implicitHeight + Style.spacing.md : 0
@@ -5136,12 +5253,63 @@ Ui.Panel {
                           Text { text: "OPEN CODING CLI"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.1 }
                           Text { width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText; text: cliConfirmCard.profile ? cliConfirmCard.profile.label : ""; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall }
                           Text { width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText; text: "MODEL  " + modelData.id; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
-                          Text { width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText; text: "PROJECT  " + (cliConfirmCard.profile ? cliConfirmCard.profile.project_label : ""); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
-                          Text { objectName: "cliSyncText"; width: parent.width; wrapMode: Text.Wrap; text: root.cliSyncSummary(cliConfirmCard.profile); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                          Text { visible: cliConfirmCard.projects.length < 2; width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText; text: "PROJECT  " + (cliConfirmCard.profile ? cliConfirmCard.profile.project_label : ""); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                          Text { objectName: "cliSyncText"; visible: cliConfirmCard.projects.length < 2; width: parent.width; wrapMode: Text.Wrap; text: root.cliSyncSummary(cliConfirmCard.profile); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                          // Several projects for this model: choose one (click, or Up/Down; Enter launches).
+                          Column {
+                            objectName: "cliProjectPicker"
+                            visible: cliConfirmCard.projects.length > 1
+                            width: parent.width; spacing: Style.spacing.xxs
+                            Text { width: parent.width; text: "PROJECT · " + cliConfirmCard.projects.length + " set up for this model"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.6 }
+                            Rectangle {
+                              width: parent.width; height: cliProjectRows.implicitHeight + 2
+                              color: "transparent"; border.width: 1; border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.16)
+                              Column {
+                                id: cliProjectRows
+                                x: 1; y: 1; width: parent.width - 2
+                                Repeater {
+                                  objectName: "cliProjectRepeater"
+                                  model: cliConfirmCard.projects
+                                  Rectangle {
+                                    objectName: "cliProjectRow"
+                                    readonly property bool chosen: !!cliConfirmCard.profile && cliConfirmCard.profile.id === modelData.id
+                                    width: parent.width; height: cliProjectRowText.implicitHeight + Style.spacing.xs * 2
+                                    color: chosen ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.12) : "transparent"
+                                    Rectangle { visible: parent.chosen; width: 2; height: parent.height; color: root.accent }
+                                    Rectangle {
+                                      x: Style.spacing.sm; y: Style.spacing.xs + 3; width: 10; height: 10; radius: 5
+                                      color: "transparent"; border.width: 1; border.color: parent.chosen ? root.accent : root.muted
+                                      Rectangle { visible: parent.parent.chosen; anchors.centerIn: parent; width: 4; height: 4; radius: 2; color: root.accent }
+                                    }
+                                    Column {
+                                      id: cliProjectRowText
+                                      x: Style.spacing.sm + 18; y: Style.spacing.xs; width: parent.width - x - Style.spacing.sm
+                                      Text { objectName: "cliProjectName"; width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
+                                             text: modelData.project_label + (modelData.running === true ? "  · RUNNING" : "")
+                                             color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall }
+                                      Text { width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
+                                             text: (modelData.project_place ? modelData.project_place + " · " : "") + root.cliAgo(modelData.last_used)
+                                             color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                                      Text { width: parent.width; wrapMode: Text.Wrap
+                                             text: modelData.available === true || modelData.running === true ? root.cliSyncShort(modelData)
+                                                   : root.cliReasonFor(modelData)
+                                             color: modelData.available !== true && modelData.running !== true ? Color.urgent
+                                                    : modelData.project_sync === "will_update" ? root.foreground : root.muted
+                                             font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                                    }
+                                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                                Accessible.role: Accessible.RadioButton; Accessible.name: "Project " + modelData.project_label
+                                                onClicked: { root.cliChosenProfileId = modelData.id; cliConfirmCard.forceActiveFocus() } }
+                                  }
+                                }
+                              }
+                            }
+                            Text { width: parent.width; text: "↑ ↓ CHOOSE · ENTER LAUNCH · ESC CANCEL"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 1 }
+                          }
                           Text { width: parent.width; wrapMode: Text.Wrap; text: "New interactive session: no earlier task is resumed. Opening the CLI does not change NOVA's chat model."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                           Row {
                             spacing: Style.spacing.xxs
-                            CompactModelButton { objectName: "cliConfirmLaunch"; selected: true; text: "LAUNCH [ENTER]"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: cliConfirmCard.visible; enabled: cliConfirmCard.visible && root.cliCanLaunch(modelData); Accessible.name: "Launch coding CLI for " + modelData.id; onClicked: root.confirmCliLaunch(modelData) }
+                            CompactModelButton { objectName: "cliConfirmLaunch"; selected: true; text: "LAUNCH [ENTER]"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: cliConfirmCard.visible; enabled: cliConfirmCard.visible && root.cliChosenCanLaunch(modelData); Accessible.name: "Launch coding CLI for " + modelData.id; onClicked: root.confirmCliLaunch(modelData) }
                             CompactModelButton { objectName: "cliConfirmCancel"; text: "CANCEL [ESC]"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: cliConfirmCard.visible; Accessible.name: "Cancel opening the coding CLI"; onClicked: root.cancelCliLaunch() }
                           }
                         }
@@ -5222,7 +5390,7 @@ Ui.Panel {
                         Text { width: parent.width; wrapMode: Text.Wrap; text: "Runs online: what you type goes to that service under your own account and sign-in. Opening it does not change NOVA's chat model."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                         Row {
                           spacing: Style.spacing.xxs
-                          CompactModelButton { objectName: "onlineCliConfirmLaunch"; selected: true; text: "LAUNCH [ENTER]"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: onlineCliConfirmCard.visible; enabled: onlineCliConfirmCard.visible && root.cliCanLaunch(modelData); Accessible.name: "Launch " + (onlineCliRow.profile ? onlineCliRow.profile.label : ""); onClicked: root.confirmCliLaunch(modelData) }
+                          CompactModelButton { objectName: "onlineCliConfirmLaunch"; selected: true; text: "LAUNCH [ENTER]"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: onlineCliConfirmCard.visible; enabled: onlineCliConfirmCard.visible && root.cliChosenCanLaunch(modelData); Accessible.name: "Launch " + (onlineCliRow.profile ? onlineCliRow.profile.label : ""); onClicked: root.confirmCliLaunch(modelData) }
                           CompactModelButton { objectName: "onlineCliConfirmCancel"; text: "CANCEL [ESC]"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: onlineCliConfirmCard.visible; Accessible.name: "Cancel opening the coding CLI"; onClicked: root.cancelCliLaunch() }
                         }
                       }
@@ -5270,7 +5438,7 @@ Ui.Panel {
                   objectName: "addModelRow"
                   width: parent.width
                   spacing: Style.spacing.xs
-                  Ui.TextField {
+                  GuardedTextField {
                     id: addModelInput
                     objectName: "addModelInput"
                     width: parent.width - addModelButton.implicitWidth - parent.spacing
@@ -5583,7 +5751,7 @@ Ui.Panel {
             visible: root.shownView === "chat"  // the message box lives in CHAT only (2026-10-09)
             width: parent.width
             spacing: Style.spacing.sm
-            Ui.TextField {
+            GuardedTextField {
               id: chatInput
               objectName: "chatInput"
               width: parent.width - newChatButton.implicitWidth - sendButton.implicitWidth - parent.spacing * 2

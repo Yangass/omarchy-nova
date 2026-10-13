@@ -59,6 +59,9 @@ class ProfileFixture(unittest.TestCase):
         patcher.start(); self.addCleanup(patcher.stop)
         pgrep = patch.object(actions.subprocess, "run", return_value=NoClient())
         self.pgrep = pgrep.start(); self.addCleanup(pgrep.stop)
+        self.last_used = self.root / "state/nova/cli-last-used.json"
+        used = patch.object(actions, "CLI_LAST_USED_PATH", self.last_used)
+        used.start(); self.addCleanup(used.stop)
 
     def tearDown(self): self.temp.cleanup()
 
@@ -75,7 +78,7 @@ class ProfileFixture(unittest.TestCase):
 
 class ProfileValidationTests(ProfileFixture):
     def test_missing_file_is_not_configured(self):
-        self.assertEqual(actions.list_cli_profiles(), {"configured": False, "error": None, "profiles": []})
+        self.assertEqual(actions.list_cli_profiles(), {"configured": False, "error": None, "profiles": [], "client_active": False})
 
     def test_valid_profile_is_listed_without_paths(self):
         self.write(self.profile())
@@ -113,6 +116,53 @@ class ProfileValidationTests(ProfileFixture):
         os.chmod(self.launcher, 0o644)
         link = self.root / "link.py"; link.symlink_to(self.launcher)
         self.assertEqual(actions.validate_cli_profile(self.profile(launcher=str(link)))[1], "launcher_unavailable")
+
+    def test_listing_shows_a_short_place_never_the_launcher_or_full_path(self):
+        self.write(self.profile())
+        [item] = actions.list_cli_profiles()["profiles"]
+        self.assertEqual(item["project_place"], "…/nova-dev")
+        self.assertNotIn(str(self.root), json.dumps(item))
+        with patch.object(actions.Path, "home", return_value=self.root):
+            self.assertEqual(actions.cli_place(str(self.project)), "~/nova-dev")
+            self.assertEqual(actions.cli_place(str(self.root)), "~")
+
+    def test_a_client_elsewhere_is_reported_once_not_as_this_projects_session(self):
+        # One Qwen at a time (Konstantin, 2026-10-12): a running client blocks every launch,
+        # but only the project holding the lock is "running".
+        class Running: returncode = 0
+        self.pgrep.return_value = Running()
+        self.write(self.profile())
+        state = actions.list_cli_profiles()
+        self.assertTrue(state["client_active"])
+        self.assertFalse(state["profiles"][0]["running"])
+        self.assertTrue(actions.cli_session_active(actions.validate_cli_profile(self.profile())[0]))
+
+    def test_last_launch_is_remembered_privately_and_listed(self):
+        self.write(self.profile())
+        self.assertIsNone(actions.list_cli_profiles()["profiles"][0]["last_used"])
+        actions.remember_cli_launch("qwen-nova-dev")
+        [item] = actions.list_cli_profiles()["profiles"]
+        self.assertIsInstance(item["last_used"], int)
+        self.assertEqual(os.stat(self.last_used).st_mode & 0o777, 0o600)
+        self.assertEqual(os.stat(self.last_used.parent).st_mode & 0o777, 0o700)
+        self.assertEqual([p.name for p in self.last_used.parent.iterdir()], ["cli-last-used.json"])
+
+    def test_odd_last_used_files_are_ignored(self):
+        self.last_used.parent.mkdir(parents=True)
+        for text in ["not json", '{"schema": 2, "profiles": {"a": 1}}', '{"schema": 1, "profiles": []}',
+                     '{"schema": 1, "profiles": {"BAD ID": 5, "ok-id": true, "neg": -3, "fine": 7}}']:
+            self.last_used.write_text(text)
+            self.assertEqual(actions.cli_last_used(), {"fine": 7} if "fine" in text else {}, text)
+        self.last_used.write_text(json.dumps({"schema": 1, "profiles": {}}) + " " * 20_000)
+        self.assertEqual(actions.cli_last_used(), {})
+        self.last_used.unlink(); (self.root / "elsewhere.json").write_text('{"schema":1,"profiles":{"x":1}}')
+        self.last_used.symlink_to(self.root / "elsewhere.json")
+        self.assertEqual(actions.cli_last_used(), {})
+
+    def test_sync_target_names_the_source_repository_and_branch(self):
+        self.write(self.profile())
+        [item] = actions.list_cli_profiles()["profiles"]
+        self.assertEqual((item["sync_source"], item["sync_branch"]), ("nova", "master"))
 
     def test_held_lock_from_this_boot_means_running_and_stale_does_not(self):
         self.write(self.profile())
@@ -192,15 +242,16 @@ class ProjectIdentityTests(ProfileFixture):
         self.assertEqual(actions.cli_project_sync(self.profile()), "will_update")
 
     def test_odd_identities_fall_back_to_the_launcher_repository(self):
-        for values in ({"source_repository": "relative/path"}, {"source_repository": str(self.checkout)},
-                       {"source_repository": str(self.pulsar), "canonical_branch": "../../x"}, {}):
+        # A legacy identity (source but no branch) is how NOVA's own dev project looks: it
+        # named a stale clone and must keep following the launcher's repository (2026-10-12).
+        for values in ({"source_repository": "relative/path", "canonical_branch": "main"},
+                       {"source_repository": str(self.checkout), "canonical_branch": "main"},
+                       {"source_repository": str(self.pulsar), "canonical_branch": "../../x"},
+                       {"source_repository": str(self.pulsar)}, {"canonical_branch": "main"}, {}):
             with self.subTest(values=values):
                 self.identity(**values)
                 canonical, branch = actions._cli_canonical(self.profile())
-                if values.get("canonical_branch") == "../../x":
-                    self.assertEqual((canonical, branch), (self.pulsar.resolve(), "master"))
-                else:
-                    self.assertEqual((canonical, branch), (Path(self.profile()["launcher"]).resolve().parents[2], "master"))
+                self.assertEqual((canonical, branch), (Path(self.profile()["launcher"]).resolve().parents[2], "master"))
 
 
 class LaunchTests(ProfileFixture):
@@ -209,6 +260,13 @@ class LaunchTests(ProfileFixture):
              patch.object(actions.subprocess, "Popen", return_value=process or Process(0)) as popen:
             result = actions.open_coding_cli(snapshot or {"profile_id": "qwen-nova-dev", "model": MODEL})
         return result, popen
+
+    def test_dispatch_records_the_launch(self):
+        self.write(self.profile())
+        with patch.dict(os.environ, SESSION), patch.object(actions.subprocess, "Popen", return_value=Process()):
+            result = actions.open_coding_cli({"profile_id": "qwen-nova-dev", "model": MODEL})
+        self.assertEqual(result["status"], "dispatched")
+        self.assertIn("qwen-nova-dev", actions.cli_last_used())
 
     def test_dispatch_uses_fixed_interactive_command(self):
         self.write(self.profile())
@@ -378,6 +436,24 @@ class NovadStateTests(unittest.TestCase):
     def online_item(self, **changes):
         value = {"id": "claude-code", "kind": "online", "valid": True, "error": None, "running": False}
         value.update(changes); return value
+
+    def test_another_projects_session_blocks_with_its_own_reason(self):
+        with patch.object(novad, "actions_get", return_value=(200, {"configured": True, "error": None, "client_active": True,
+                                                                      "profiles": [self.item(running=True), self.item(id="qwen-pulsar-dev")]})), \
+             patch.object(novad, "resident_models", return_value=[MODEL]), \
+             patch.object(novad.shutil, "disk_usage", return_value=type("Usage", (), {"free": 200 * 1024**3})()):
+            _, payload = novad.cli_profiles_state()
+        self.assertEqual([p["blocked"] for p in payload["profiles"]], ["cli_session_active", "other_cli_session_active"])
+        self.assertTrue(payload["client_active"])
+
+    def test_busy_models_are_conservative_when_the_client_has_no_project(self):
+        local = [self.item(kind="local"), self.item(id="b", model="other:latest", kind="local")]
+        self.assertEqual(novad.cli_busy_models({"profiles": local}), [])
+        self.assertEqual(novad.cli_busy_models({"profiles": local, "client_active": True}), [MODEL, "other:latest"])
+        local[1]["running"] = True
+        self.assertEqual(novad.cli_busy_models({"profiles": local, "client_active": True}), ["other:latest"])
+        online = [{"id": "claude-code", "kind": "online", "running": False}]
+        self.assertEqual(novad.cli_busy_models({"profiles": online, "client_active": True}), [])
 
     def test_online_available_ignores_resident_and_disk(self):
         for resident, free in (([], 200 * 1024**3), (["qwen3:14b"], 200 * 1024**3),

@@ -18,6 +18,9 @@ apps, so it is built to do that only for you and only after you approve.
 - **Wrong downloads.** Every model is verified against the exact build (manifest
   digest and size) shown on its approval card. An update may replace only the exact
   older build you approved replacing.
+- **Other apps' clipboard contents.** NOVA's text boxes stay read-only, so the shell
+  doesn't read the clipboard for them, until you click or type in them. Another app
+  can't make the shell take in a huge clipboard text through NOVA in the background.
 - **Privileges.** Nothing runs as root. The only password prompt is the one-time Ollama
   install, in a terminal you can read first.
 

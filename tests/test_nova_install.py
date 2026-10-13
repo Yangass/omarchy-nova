@@ -96,7 +96,7 @@ class InstallerTests(unittest.TestCase):
         first = app._stage_plugin()
         self.assertIsNotNone(first)
         first_panel = (first / "Panel.qml").read_text()
-        self.assertIn('packagedUiIdentity: "v0.14.4 · ui-', first_panel)
+        self.assertIn('packagedUiIdentity: "v0.14.6 · ui-', first_panel)
         self.assertNotIn(install.PANEL_IDENTITY_MARKER, first_panel)
         repeat = app._stage_plugin()
         self.assertEqual(first_panel, (repeat / "Panel.qml").read_text())
@@ -111,7 +111,7 @@ class InstallerTests(unittest.TestCase):
         self.mutate("setup", app)
         installed = self.home / ".config/omarchy/plugins" / install.PLUGIN_ID / "Panel.qml"
         original = installed.read_bytes()
-        self.assertIn(b'packagedUiIdentity: "v0.14.4', original)
+        self.assertIn(b'packagedUiIdentity: "v0.14.6', original)
         (self.source / "Panel.qml").write_text((self.source / "Panel.qml").read_text() + "\n// next UI\n")
         failing = self.app(ops=MockOps(fail=("start", "novad.service")))
         with self.assertRaises(RuntimeError): self.mutate("update", failing)

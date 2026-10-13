@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.14.6
+
+- **Security fix (marketplace review):** NOVA's two text boxes (the chat box and ADD A
+  MODEL) no longer let the desktop shell read your clipboard in the background. On
+  current Qt versions an editable text box reads the whole clipboard text every time it
+  changes, with no size limit, even while hidden. Another app could have put a huge or
+  never-ending text there and made the shell (top bar and panels) use a lot of memory or
+  hang, without anything being pasted. NOVA's boxes now ignore the clipboard until you
+  click or type in them, and again once they're hidden or the panel closes. Typing and
+  pasting work as before. Thanks to HANCORE-linux for the report.
+
+## 0.14.5
+
+- **Coding CLI, several projects:** when one model has more than one project set up (for
+  example NOVA and a second project), OPEN CLI's confirm card lists them. The project you
+  opened last is chosen first; ↑ ↓ or a click choose another, Enter launches. Each row
+  shows where the project lives, when it was last opened from NOVA, and whether opening
+  it will update it.
+- One local coding CLI at a time, as before, but now NOVA says which project's CLI is
+  open ("The coding CLI for … is open"), and the update line names the right repository
+  and branch.
+
 ## 0.14.4
 
 - **Fix:** since 0.14.1, NOVA's hardware check no longer received graphics-card details
