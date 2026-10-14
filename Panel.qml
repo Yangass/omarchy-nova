@@ -3430,24 +3430,72 @@ Ui.Panel {
     verticalPadding: Math.max(2, Style.spacing.controlPaddingY * 0.33)
   }
 
-  // Marketplace review #11195 (2026-10-13): on released Qt (6.11.2, 6.12.0) every editable
-  // TextInput reads the whole clipboard text when the clipboard changes, with no size limit
-  // and no overall deadline (QQuickTextInput::q_canPasteChanged; fixed upstream 2026-09-13,
-  // not released yet). The shell receives clipboard offers whenever any of its surfaces has
-  // the keyboard, so another clipboard owner could grow or stall the shared shell before
-  // anything is pasted. A read-only field keeps Qt off the clipboard: NOVA's fields stay
-  // read-only until the user presses a key or the mouse in them, and turn read-only again
-  // when hidden or when the panel closes. Qt draws no caret in a read-only field, so the
-  // field draws its own (1 px in the text colour, blinking like Qt's).
+  // Marketplace review #11195 (2026-10-13, follow-up 2026-10-14): on released Qt (6.11.2,
+  // 6.12.0) an editable TextInput reads the whole clipboard text whenever the clipboard
+  // changes and again the moment it turns editable (QQuickTextInput::q_canPasteChanged, also
+  // called from setReadOnly(false)), with no size limit and no overall deadline; fixed upstream
+  // 2026-09-13, not released yet. A read-only field keeps Qt off the clipboard, so NOVA's
+  // fields never become editable to Qt: readOnly stays true and the field edits its own text
+  // from key events. Paste goes through root.pasteInto (wl-paste in its own process, at most
+  // pasteLimitBytes, stopped after 2 s), so the shell never holds more than that. Cost: input
+  // methods and dead keys reach only editable fields, so they don't work here until Qt ships
+  // the fix. Qt draws no caret in a read-only field, so the field draws its own.
   component GuardedTextField: Ui.TextField {
     id: guardedField
-    property bool userEditing: false
-    readOnly: !(userEditing && root.opened && visible)
+    readOnly: true
     cursorVisible: activeFocus
-    onVisibleChanged: if (!visible) userEditing = false
-    onPressed: userEditing = true
-    Keys.onPressed: function(event) { if (root.keyStartsEditing(event)) guardedField.userEditing = true }
-    Connections { target: root; function onOpenedChanged() { if (!root.opened) guardedField.userEditing = false } }
+    property var undoSteps: []
+    property var redoSteps: []
+    property int typedTo: -1    // where the last typed character ended: typing on from there is one undo step
+    property bool ownEdit: false
+    signal pasteRefused(string reason)
+    onTextChanged: if (!ownEdit) { undoSteps = []; redoSteps = []; typedTo = -1 }  // set from outside (sent, cleared)
+    function replaceRange(start, end, insertText, typing) {
+      insertText = insertText.slice(0, Math.max(0, maximumLength - (text.length - (end - start))))
+      if (start === end && insertText === "") return
+      if (!(typing && start === end && start === typedTo)) undoSteps = undoSteps.slice(-49).concat([{ text: text, cursor: cursorPosition }])
+      redoSteps = []; typedTo = typing ? start + insertText.length : -1
+      ownEdit = true; text = text.slice(0, start) + insertText + text.slice(end); ownEdit = false
+      cursorPosition = start + insertText.length
+    }
+    function stepBack(redo) {
+      var from = redo ? redoSteps : undoSteps, current = { text: text, cursor: cursorPosition }
+      if (from.length === 0) return
+      var step = from[from.length - 1]
+      if (redo) { redoSteps = from.slice(0, -1); undoSteps = undoSteps.concat([current]) }
+      else { undoSteps = from.slice(0, -1); redoSteps = redoSteps.concat([current]) }
+      typedTo = -1
+      ownEdit = true; text = step.text; ownEdit = false
+      cursorPosition = step.cursor
+    }
+    function wordEdge(position, forward) {
+      var inside = function() { return forward ? position < text.length : position > 0 }
+      var next = function() { return text.charAt(forward ? position : position - 1) }
+      while (inside() && /\s/.test(next())) position += forward ? 1 : -1
+      while (inside() && /\S/.test(next())) position += forward ? 1 : -1
+      return position
+    }
+    // Navigation, selection, copy, Select All and Enter stay Qt's (they work read-only).
+    function editKey(event) {
+      var start = selectionStart, end = selectionEnd, word = (event.modifiers & Qt.ControlModifier) !== 0
+      if (event.matches(StandardKey.Paste)) { root.pasteInto(guardedField); return true }
+      if (event.matches(StandardKey.Cut)) { if (start !== end) { copy(); replaceRange(start, end, "", false) } return true }
+      if (event.matches(StandardKey.Undo)) { stepBack(false); return true }
+      if (event.matches(StandardKey.Redo)) { stepBack(true); return true }
+      if (event.key === Qt.Key_Backspace && start === end)
+        start = word ? wordEdge(start, false) : start - (/[\uDC00-\uDFFF]/.test(text.charAt(start - 1)) ? 2 : 1)
+      if (event.key === Qt.Key_Delete && start === end)
+        end = word ? wordEdge(end, true) : end + (/[\uD800-\uDBFF]/.test(text.charAt(end)) ? 2 : 1)
+      if (event.key === Qt.Key_Backspace || event.key === Qt.Key_Delete) {
+        replaceRange(Math.max(0, start), Math.min(text.length, end), "", false); return true
+      }
+      // Qt's own rule (QInputControl::isAcceptableInput): Ctrl and Ctrl+Shift are shortcuts; AltGr may come as Ctrl+Alt.
+      var mods = event.modifiers & (Qt.ShiftModifier | Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)
+      if (event.text === "" || /[\x00-\x1f\x7f]/.test(event.text) || mods === Qt.ControlModifier || mods === (Qt.ControlModifier | Qt.ShiftModifier)) return false
+      replaceRange(start, end, event.text, true)
+      return true
+    }
+    Keys.onPressed: function(event) { if (guardedField.editKey(event)) event.accepted = true }
     cursorDelegate: Rectangle {
       id: guardedCaret
       property bool blinkOn: true
@@ -3470,10 +3518,44 @@ Ui.Panel {
       }
     }
   }
-  function keyStartsEditing(event) {
-    // Keys that only move focus, submit or close never make a field editable; modifiers wait for the key they modify.
-    return [Qt.Key_Escape, Qt.Key_Tab, Qt.Key_Backtab, Qt.Key_Return, Qt.Key_Enter, Qt.Key_Shift, Qt.Key_Control,
-            Qt.Key_Alt, Qt.Key_AltGr, Qt.Key_Meta, Qt.Key_Super_L, Qt.Key_Super_R, Qt.Key_CapsLock].indexOf(event.key) < 0
+  // Paste for GuardedTextField: the clipboard is read by wl-paste in its own process, cut at
+  // pasteLimitBytes (+1 to tell "too long") and stopped after 2 s, so a huge or stalled
+  // clipboard never reaches the shell. The last line of the output is the exit status.
+  readonly property int pasteLimitBytes: 131072  // a full box: 32767 characters of up to 4 bytes
+  property var pasteTarget: null
+  function pasteInto(field) {
+    if (boundedPaste.running) return
+    pasteTarget = field
+    boundedPaste.running = true
+  }
+  function utf8Length(value) {
+    var bytes = 0
+    for (var i = 0; i < value.length; i++) {
+      var unit = value.charCodeAt(i)
+      bytes += unit < 0x80 ? 1 : (unit < 0x800 ? 2 : (unit >= 0xDC00 && unit <= 0xDFFF ? 1 : 3))
+    }
+    return bytes
+  }
+  function finishPaste(output) {
+    var field = pasteTarget, cut = output.lastIndexOf("\n"), status = output.slice(cut + 1).trim()
+    var content = cut < 0 ? "" : output.slice(0, cut).replace(/\r\n/g, "\n")
+    pasteTarget = null
+    if (!field || !field.visible || !field.enabled) return
+    if (status === "124") { field.pasteRefused("Not pasted: the clipboard didn't answer within 2 seconds."); return }
+    if (status === "127") { field.pasteRefused("Not pasted: pasting needs wl-paste (package wl-clipboard)."); return }
+    if (content === "") return
+    if (utf8Length(content) > pasteLimitBytes
+        || content.length > field.maximumLength - (field.text.length - (field.selectionEnd - field.selectionStart))) {
+      field.pasteRefused("Not pasted: the clipboard text is too long for this box."); return
+    }
+    field.replaceRange(field.selectionStart, field.selectionEnd, content, false)
+  }
+  Process {
+    id: boundedPaste
+    command: ["sh", "-c", "command -v wl-paste >/dev/null || { printf '\\n127'; exit 0; }; "
+              + "timeout 2 sh -c 'wl-paste --no-newline --type text 2>/dev/null | head -c \"$1\"' sh " + (root.pasteLimitBytes + 1)
+              + "; printf '\\n%s' \"$?\""]
+    stdout: StdioCollector { onStreamFinished: root.finishPaste(String(text)) }
   }
 
   component AcquisitionProgress: Column {
@@ -5447,6 +5529,7 @@ Ui.Panel {
                     foreground: root.foreground
                     accent: root.accent
                     onAccepted: root.addRequestedModel(text)
+                    onPasteRefused: function(reason) { root.addModelFailed = true; root.addModelStatus = reason }
                   }
                   CompactModelButton { id: addModelButton; objectName: "addModelButton"; anchors.verticalCenter: parent.verticalCenter; text: root.addModelBusy ? "LOOKING UP…" : "ADD"; tooltipText: "Look up this model in Ollama's library; nothing downloads"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: true; enabled: !root.addModelBusy && addModelInput.text.trim() !== ""; onClicked: root.addRequestedModel(addModelInput.text) }
                 }
@@ -5760,6 +5843,7 @@ Ui.Panel {
               foreground: root.foreground
               accent: root.accent
               onAccepted: root.sendChat()
+              onPasteRefused: function(reason) { root.chatError = reason }
               Keys.onPressed: function(event) { root.noteChatKeyPressed(event) }
               Keys.onReleased: function(event) { root.noteApprovalKeyReleased(event) }
               Keys.onEscapePressed: { if (!root.handleApprovalShortcut("deny")) root.close() }

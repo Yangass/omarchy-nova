@@ -817,7 +817,7 @@ class OwnerOnlyHTTPServer(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "novad/0.14.6"
+    server_version = "novad/0.14.7"
     def log_message(self, _format: str, *_args: Any) -> None: return
     def send_json(self, status: HTTPStatus, payload: dict[str, Any]) -> bool:
         body = json.dumps(payload, separators=(",", ":")).encode()

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.14.7
+
+- **Security fix (marketplace review follow-up):** in 0.14.6 a text box still became a
+  normal Qt text box once you clicked or typed in it, and from then on (and the moment
+  it switched) the shell read the whole clipboard text, with no size or time limit. Now
+  NOVA's boxes never become normal Qt text boxes: they handle typing, Backspace, Delete,
+  undo, cut and paste themselves. Paste reads the clipboard in a separate helper
+  (`wl-paste`), takes at most 128 KB and gives up after 2 seconds, so a huge or stuck
+  clipboard can't make the shell (top bar and panels) use a lot of memory or hang. A
+  clipboard text that's too long for the box isn't pasted, and NOVA says so. Known
+  limit until Qt ships its fix: input methods (fcitx5 for Chinese, Japanese, Korean)
+  and dead keys don't work in NOVA's two boxes. Thanks again to HANCORE-linux.
+
 ## 0.14.6
 
 - **Security fix (marketplace review):** NOVA's two text boxes (the chat box and ADD A
