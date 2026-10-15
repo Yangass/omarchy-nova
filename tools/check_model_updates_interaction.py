@@ -9,12 +9,13 @@ a check. No model is downloaded.
 """
 import json
 import os
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 import subprocess
 import tempfile
 from threading import Thread
 
+import fake_nova
 import onboarding_preview as preview
 
 REQUESTS = {"checks": [], "skips": [], "proposals": []}
@@ -51,7 +52,7 @@ class Handler(BaseHTTPRequestHandler):
                               "gone": {"catalog_id": "llama3-2-1b-q8-0", "model_id": "llama3.2:1b", "status": "gone", "skipped": False}}[mode]
             self.reply(200, view())
         elif self.path == "/models/updates":
-            REQUESTS.setdefault("keys", []).append(self.headers.get("X-Nova-Key"))
+            REQUESTS.setdefault("headers", []).append(sorted(self.headers.keys()))
             self.reply(200, view())
         elif self.path == "/models":
             self.reply(200, {"models": MODELS, "active_provider": "ollama", "active_model": "qwen3:8b"})
@@ -87,14 +88,15 @@ class Handler(BaseHTTPRequestHandler):
 
 
 QML_CHECK = r'''
+  NovaClient { id: fakeNova; socketPath: "@SOCKET@" }
   TestCase {
     name: "ModelUpdatesInteraction"
     when: novaPanel.opened
     function check(value, message) { if (!value) throw new Error(message) }
     function get(path) {
-      var xhr = new XMLHttpRequest(), complete = false, result = null
+      var xhr = fakeNova.request(), complete = false, result = null
       xhr.onreadystatechange = function() { if (xhr.readyState === XMLHttpRequest.DONE) { result = xhr.responseText; complete = true } }
-      xhr.open("GET", previewHost.api + path); xhr.send()
+      xhr.open("GET", path); xhr.send()
       var n = 0; while (!complete && n++ < 100) wait(10)
       return JSON.parse(result)
     }
@@ -113,7 +115,7 @@ QML_CHECK = r'''
         try { fn(); results.push({name:name, passed:true}) }
         catch (e) { results.push({name:name, passed:false, error:String(e)}) }
       }
-      previewHost.api = "http://127.0.0.1:@PORT@"
+      previewHost.novaClient = fakeNova
       previewHost.acceptancePreview = false
       novaPanel.panelView = "models"; novaPanel.modelsUnavailable = false; novaPanel.installedModelsLoading = false
       novaPanel.discoveredModels = @MODELS@
@@ -183,12 +185,12 @@ QML_CHECK = r'''
         check(novaPanel.modelUpdateRefusal({ error: "stale_or_blocked_proposal" }) === "STALE OR BLOCKED PROPOSAL", "unknown code")
         check(novaPanel.modelUpdateRefusal(null) === "NOVA'S SERVICE DIDN'T ANSWER", "no answer")
       })
-      test("every request to NOVA carries the user's key", function() {
-        previewHost.apiKey = "fixture-key-0123456789abcdef0123456789"
+      test("requests reach NOVA over its socket and carry no key", function() {
+        var before = (get("/__requests__").headers || []).length
         novaPanel.refreshModelUpdates(false); wait(250)
-        var keys = get("/__requests__").keys
-        check(keys && keys[keys.length - 1] === "fixture-key-0123456789abcdef0123456789", "key not sent: " + JSON.stringify(keys))
-        previewHost.apiKey = ""
+        var headers = get("/__requests__").headers || []
+        check(headers.length === before + 1, "the panel's request did not arrive")
+        check(headers[headers.length - 1].map(function(h) { return h.toLowerCase() }).indexOf("x-nova-key") < 0, "a key was sent: " + JSON.stringify(headers[headers.length - 1]))
       })
       test("REFRESH also asks Ollama's library for newer builds", function() {
         var before = get("/__requests__").checks.length
@@ -202,7 +204,7 @@ QML_CHECK = r'''
 
 
 def main():
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server = fake_nova.server(Handler)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -210,7 +212,7 @@ def main():
         with tempfile.TemporaryDirectory(prefix="nova-updates-", dir="/tmp") as raw:
             shell = preview.prepare_config(Path(raw), fixture)
             text = shell.read_text().replace("import QtQuick\n", "import QtQuick\nimport QtTest\n", 1)
-            check = (QML_CHECK.replace("@PORT@", str(server.server_port)).replace("@MODELS@", json.dumps(MODELS))
+            check = (QML_CHECK.replace("@SOCKET@", server.server_address).replace("@MODELS@", json.dumps(MODELS))
                      .replace("@CAPTURE@", os.environ.get("NOVA_UPDATES_CAPTURE", "")))
             shell.write_text(text.rsplit("\n}", 1)[0] + check + "\n}\n")
             result = subprocess.run(["quickshell", "--path", raw], capture_output=True, text=True, timeout=90)

@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """Exercise P1-01E.5 through canonical Panel.qml with isolated HTTP fixtures."""
 from copy import deepcopy
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 import json
 from pathlib import Path
 import subprocess
 import tempfile
 from threading import Thread
 
+import fake_nova
 import onboarding_preview as preview
 
 
 QML_CHECK = r'''
+  NovaClient { id: fakeNova; socketPath: "@SOCKET@" }
   TestCase {
     name: "IsolatedRecoveryInteraction"
     when: novaPanel.opened && novaPanel.catalogModels.length > 0
@@ -51,7 +53,7 @@ QML_CHECK = r'''
     function test_recovery() {
       var results=[]
       function test(name,fn){try{fn();results.push({name:name,passed:true})}catch(e){results.push({name:name,passed:false,error:String(e)})}}
-      previewHost.api=@STUB_API@; previewHost.acceptancePreview=false
+      previewHost.novaClient = fakeNova; previewHost.acceptancePreview=false
       var model=shell.fixture.catalog_models[0]
       test("resolved retry history permits eligible install",function(){
         setRecord("fixture-resolved",{outcome:"RETRY_ALLOWED",retry_allowed:true,basis:"OPERATOR_ATTESTATION"})
@@ -154,13 +156,13 @@ def main():
             resolved.add(identifier)
             self.send(201,{"outcome":"RETRY_ALLOWED","retry_allowed":True,"basis":"OPERATOR_ATTESTATION"})
 
-    with ThreadingHTTPServer(("127.0.0.1",0),Stub) as server:
+    with fake_nova.server(Stub) as server:
         Thread(target=server.serve_forever,daemon=True).start()
         with tempfile.TemporaryDirectory(prefix="nova-recovery-check-",dir="/tmp") as raw:
             target=Path(raw); fixture=preview.scenarios()["recovery-unresolved"]
             shell=preview.prepare_config(target,fixture)
             text=shell.read_text().replace("import QtQuick\n","import QtQuick\nimport QtTest\n",1)
-            text=text.rsplit("\n}",1)[0]+QML_CHECK.replace("@STUB_API@",json.dumps(f"http://127.0.0.1:{server.server_port}"))+"\n}\n"
+            text=text.rsplit("\n}",1)[0]+QML_CHECK.replace("@SOCKET@",server.server_address)+"\n}\n"
             shell.write_text(text)
             result=subprocess.run(["quickshell","--path",str(target)],capture_output=True,text=True,timeout=45)
             output=result.stdout+result.stderr

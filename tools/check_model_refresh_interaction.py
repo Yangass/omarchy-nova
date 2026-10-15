@@ -26,11 +26,12 @@ UI + request behavior required for the installed-model inventory:
 import json
 import threading
 import time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 import subprocess
 import tempfile
 
+import fake_nova
 import onboarding_preview as preview
 
 
@@ -50,6 +51,7 @@ SCRIPT = [
 SAFE_BODY = (200, {"models": []}, 0)
 
 QML_CHECK = r'''
+  NovaClient { id: fakeNova; socketPath: "@SOCKET@" }
   TestCase {
     name: "IsolatedModelRefreshInteraction"
     when: novaPanel.opened && novaPanel.catalogModels.length > 0
@@ -74,13 +76,13 @@ QML_CHECK = r'''
     }
     function requestCount() {
       var count = null
-      var xhr = new XMLHttpRequest()
+      var xhr = fakeNova.request()
       xhr.onreadystatechange = function() {
         if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
           try { count = JSON.parse(xhr.responseText).count } catch (e) { count = null }
         }
       }
-      xhr.open("GET", previewHost.api + "/__requests__")
+      xhr.open("GET", "/__requests__")
       xhr.send()
       var guard = 0
       while (count === null && guard < 200) { wait(10); guard++ }
@@ -92,7 +94,7 @@ QML_CHECK = r'''
         try { fn(); results.push({name: name, passed: true}) }
         catch (e) { results.push({name: name, passed: false, error: String(e)}) }
       }
-      previewHost.api = "http://127.0.0.1:@PORT@"
+      previewHost.novaClient = fakeNova
       previewHost.acceptancePreview = false
       novaPanel.panelView = "models"
       test("T1_provider_failure_flags_unavailable_and_keeps_retry_visible", function() {
@@ -233,8 +235,7 @@ REQUEST_COUNT = [0]
 
 def main():
     fixture = preview.scenarios()["verified-awaiting-activation"]
-    server = ThreadingHTTPServer(("127.0.0.1", 0), _Stub)
-    port = server.server_address[1]
+    server = fake_nova.server(_Stub)
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
     try:
@@ -242,7 +243,7 @@ def main():
             target = Path(raw)
             shell = preview.prepare_config(target, fixture)
             text = shell.read_text().replace("import QtQuick\n", "import QtQuick\nimport QtTest\n", 1)
-            text = text.rsplit("\n}", 1)[0] + QML_CHECK.replace("@PORT@", str(port)) + "\n}\n"
+            text = text.rsplit("\n}", 1)[0] + QML_CHECK.replace("@SOCKET@", server.server_address) + "\n}\n"
             shell.write_text(text)
             result = subprocess.run(["quickshell", "--path", str(target)], capture_output=True,
                                     text=True, timeout=90)

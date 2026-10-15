@@ -398,6 +398,7 @@ def prepare_config(target: Path, fixture: dict) -> Path:
     (target / "Panel.qml").symlink_to(ROOT / "Panel.qml")
     (target / "wave.frag.qsb").symlink_to(ROOT / "wave.frag.qsb")
     (target / "NovaMark.qml").symlink_to(ROOT / "NovaMark.qml")
+    (target / "NovaClient.qml").symlink_to(ROOT / "NovaClient.qml")
     template = (ROOT / "tools/onboarding_preview_shell.qml").read_text()
     rendered = template.replace("@FIXTURE_JSON@", json.dumps(fixture, ensure_ascii=False))
     shell_file = target / "shell.qml"

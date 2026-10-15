@@ -6,7 +6,7 @@ delivery and the real panel XHR/session code to cover lazy setup, reuse,
 context loss, retention reconciliation, and uncertain transport outcomes.
 """
 
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 import json
 from pathlib import Path
 import subprocess
@@ -14,6 +14,7 @@ import tempfile
 from threading import Lock, Thread
 import time
 
+import fake_nova
 import onboarding_preview as preview
 
 
@@ -28,6 +29,7 @@ MOVED = "chat_" + "T" * 32
 
 
 QML_CHECK = r'''
+  NovaClient { id: fakeNova; socketPath: "@SOCKET@" }
   TestCase {
     name: "IsolatedChatSessionInteraction"
     when: novaPanel.opened
@@ -40,8 +42,8 @@ QML_CHECK = r'''
     function input() { return findChild(novaPanel, "chatInput") }
     function setResetMode(mode) {
       var done = false
-      var xhr = new XMLHttpRequest()
-      xhr.open("GET", novaPanel.chatApiBase() + "/fixture/reset-mode/" + mode, true)
+      var xhr = fakeNova.request()
+      xhr.open("GET", "/fixture/reset-mode/" + mode, true)
       xhr.onload = function() { done = true }
       xhr.onerror = function() { done = true }
       xhr.send()
@@ -655,7 +657,7 @@ def main():
             self.end_headers()
             self.wfile.write(frames)
 
-    with ThreadingHTTPServer(("127.0.0.1", 0), Stub) as server:
+    with fake_nova.server(Stub) as server:
         Thread(target=server.serve_forever, daemon=True).start()
         with tempfile.TemporaryDirectory(prefix="nova-chat-session-check-", dir="/tmp") as raw:
             target = Path(raw)
@@ -666,7 +668,7 @@ def main():
                                "active_available": True, "runtime_ready": True}
             shell_file = preview.prepare_config(target, fixture)
             text = shell_file.read_text().replace("import QtQuick\n", "import QtQuick\nimport QtTest\n", 1)
-            check = (QML_CHECK.replace("@SESSION_A@", json.dumps(SESSION_A))
+            check = (QML_CHECK.replace("@SOCKET@", server.server_address).replace("@SESSION_A@", json.dumps(SESSION_A))
                      .replace("@SESSION_B@", json.dumps(SESSION_B))
                      .replace("@SESSION_C@", json.dumps(SESSION_C))
                      .replace("@EXPIRED@", json.dumps(EXPIRED))
@@ -674,8 +676,7 @@ def main():
                      .replace("@SESSION_D@", json.dumps(SESSION_D))
                      .replace("@REPLACED@", json.dumps(REPLACED))
                      .replace("@MOVED@", json.dumps(MOVED)))
-            text = text.replace('property string api: "fixture://no-production-api"',
-                                f'property string api: "http://127.0.0.1:{server.server_port}"')
+            text = text.replace('property var novaClient: null', 'property var novaClient: fakeNova')
             text = text.rsplit("\n}", 1)[0] + check + "\n}\n"
             shell_file.write_text(text)
             result = subprocess.run(["quickshell", "--path", str(target)],

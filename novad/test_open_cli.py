@@ -36,16 +36,6 @@ class NoClient:
     returncode = 1
 
 
-_KEY_DIR = tempfile.TemporaryDirectory()
-
-
-def setUpModule():
-    # novad's calls to nova-actions carry the API key; never create the user's real one here.
-    patcher = patch.object(novad, "API_KEY_PATH", os.path.join(_KEY_DIR.name, "api.token"))
-    patcher.start()
-    unittest.addModuleCleanup(patcher.stop)
-
-
 class ProfileFixture(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -480,18 +470,14 @@ class NovadStateTests(unittest.TestCase):
 
     def test_ui_action_routes_to_fixed_executor_path(self):
         seen = {}
-        class Response:
-            status = 200
-            def __enter__(self): return self
-            def __exit__(self, *a): return False
-            def read(self, n): return b'{"status":"dispatched"}'
-        def fake(request, timeout):
-            seen["url"], seen["body"] = request.full_url, json.loads(request.data)
-            return Response()
-        with patch.object(novad.Path, "read_text", return_value="token"), patch.object(novad.urllib.request, "urlopen", fake):
+        def fake(service, method, path, body, headers, timeout):
+            seen["to"], seen["body"], seen["auth"] = (service, method, path), json.loads(body), headers["Authorization"]
+            return 200, b'{"status":"dispatched"}\n'
+        with patch.object(novad.Path, "read_text", return_value="token"), patch.object(novad.local_socket, "call", fake):
             result = novad.execute_action("open_coding_cli", {"profile_id": "qwen-nova-dev", "model": MODEL})
         self.assertEqual(result["status"], "dispatched")
-        self.assertEqual(seen["url"], "http://127.0.0.1:8791/v1/open-coding-cli")
+        self.assertEqual(seen["to"], ("nova-actions", "POST", "/v1/open-coding-cli"))
+        self.assertEqual(seen["auth"], "Bearer token")
         self.assertEqual(seen["body"], {"action": "open_coding_cli", "snapshot": {"profile_id": "qwen-nova-dev", "model": MODEL}})
 
 

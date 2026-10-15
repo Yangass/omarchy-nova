@@ -4,13 +4,14 @@
 Run under a private compositor. No real recommendation, catalog or model service is used.
 """
 import json
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 import subprocess
 import tempfile
 from threading import Thread
 from urllib.parse import urlsplit, parse_qs
 
+import fake_nova
 import onboarding_preview as preview
 
 CATALOG = [{"catalog_id": cid, "display_name": cid, "source": {"provider": "ollama", "upstream_id": up},
@@ -61,6 +62,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 QML_CHECK = r'''
+  NovaClient { id: fakeNova; socketPath: "@SOCKET@" }
   TestCase {
     name: "SuggestionsInteraction"
     when: novaPanel.opened
@@ -77,7 +79,7 @@ QML_CHECK = r'''
         try { fn(); results.push({name:name, passed:true}) }
         catch (e) { results.push({name:name, passed:false, error:String(e)}) }
       }
-      previewHost.api = "http://127.0.0.1:@PORT@"
+      previewHost.novaClient = fakeNova
       previewHost.acceptancePreview = false
       novaPanel.panelView = "models"
       novaPanel.catalogDownloadsExpanded = true
@@ -200,7 +202,7 @@ QML_CHECK = r'''
 
 
 def main():
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server = fake_nova.server(Handler)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -208,7 +210,7 @@ def main():
         with tempfile.TemporaryDirectory(prefix="nova-suggestions-", dir="/tmp") as raw:
             shell = preview.prepare_config(Path(raw), fixture)
             text = shell.read_text().replace("import QtQuick\n", "import QtQuick\nimport QtTest\n", 1)
-            check = QML_CHECK.replace("@PORT@", str(server.server_port)).replace("@CATALOG@", json.dumps(CATALOG))
+            check = QML_CHECK.replace("@SOCKET@", server.server_address).replace("@CATALOG@", json.dumps(CATALOG))
             shell.write_text(text.rsplit("\n}", 1)[0] + check + "\n}\n")
             result = subprocess.run(["quickshell", "--path", raw], capture_output=True, text=True, timeout=90)
             output = result.stdout + result.stderr

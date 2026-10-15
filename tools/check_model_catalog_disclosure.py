@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Measure installed-list/catalog disclosure in the canonical fixture panel."""
 import json
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 import subprocess
 import tempfile
 from threading import Thread
 
+import fake_nova
 import onboarding_preview as preview
 
 
@@ -27,6 +28,7 @@ class Stub(BaseHTTPRequestHandler):
 
 
 QML_CHECK = r'''
+  NovaClient { id: fakeNova; socketPath: "@SOCKET@" }
   TestCase {
     name: "ModelCatalogDisclosure"
     when: novaPanel.opened && novaPanel.catalogModels.length > 0
@@ -54,7 +56,7 @@ QML_CHECK = r'''
     }
     function test_disclosure() {
       var results = [], geometry = {}
-      previewHost.api = "@STUB_API@"
+      previewHost.novaClient = fakeNova
       function test(name, fn) {
         try { fn(); results.push({name:name, passed:true}) }
         catch (e) { results.push({name:name, passed:false, error:String(e)}) }
@@ -303,14 +305,14 @@ QML_CHECK = r'''
 def main():
     fixture = preview.scenarios()["installed-no-selection"]
     fixture["discovered_models"] = [{"id": preview.MODEL_ID, "provider": "ollama", "available": True}]
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Stub)
+    server = fake_nova.server(Stub)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
         with tempfile.TemporaryDirectory(prefix="nova-catalog-disclosure-", dir="/tmp") as raw:
             shell = preview.prepare_config(Path(raw), fixture)
             source = shell.read_text().replace("import QtQuick\n", "import QtQuick\nimport QtTest\n", 1)
-            checks = QML_CHECK.replace("@STUB_API@", f"http://127.0.0.1:{server.server_port}")
+            checks = QML_CHECK.replace("@SOCKET@", server.server_address)
             shell.write_text(source.rsplit("\n}", 1)[0] + checks + "\n}\n")
             result = subprocess.run(["quickshell", "--path", raw], capture_output=True, text=True, timeout=45)
             output = result.stdout + result.stderr

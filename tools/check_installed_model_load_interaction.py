@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Click the canonical installed-row load control against an isolated HTTP stub."""
 import json
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 import subprocess
 import tempfile
 from threading import Thread
 import time
 
+import fake_nova
 import onboarding_preview as preview
 
 
@@ -91,6 +92,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 QML_CHECK = r'''
+  NovaClient { id: fakeNova; socketPath: "@SOCKET@" }
   TestCase {
     name: "InstalledModelLoadInteraction"
     when: novaPanel.opened
@@ -112,9 +114,9 @@ QML_CHECK = r'''
       mouseClick(catcher, point.x, point.y, Qt.LeftButton)
     }
     function fixture(path) {
-      var xhr = new XMLHttpRequest(), complete = false
+      var xhr = fakeNova.request(), complete = false
       xhr.onreadystatechange = function() { if (xhr.readyState === XMLHttpRequest.DONE) complete = true }
-      xhr.open("GET", previewHost.api + path)
+      xhr.open("GET", path)
       xhr.send()
       var n = 0; while (!complete && n++ < 100) wait(10)
       check(complete, "fixture request failed: " + path)
@@ -126,7 +128,7 @@ QML_CHECK = r'''
         try { fn(); results.push({name:name, passed:true}) }
         catch (e) { results.push({name:name, passed:false, error:String(e)}) }
       }
-      previewHost.api = "http://127.0.0.1:@PORT@"
+      previewHost.novaClient = fakeNova
       previewHost.acceptancePreview = false
       novaPanel.panelView = "models"
       novaPanel.onboardingSnapshotFresh = true
@@ -342,9 +344,9 @@ QML_CHECK = r'''
       console.warn("RECONCILIATION_RESULTS " + JSON.stringify(results))
     }
     function requests() {
-      var xhr = new XMLHttpRequest(), complete = false, result = []
+      var xhr = fakeNova.request(), complete = false, result = []
       xhr.onreadystatechange = function() { if (xhr.readyState === XMLHttpRequest.DONE) { result = JSON.parse(xhr.responseText).requests; complete = true } }
-      xhr.open("GET", previewHost.api + "/__requests__"); xhr.send()
+      xhr.open("GET", "/__requests__"); xhr.send()
       var n = 0; while (!complete && n++ < 100) wait(10)
       check(complete, "request log unavailable")
       return result
@@ -354,7 +356,7 @@ QML_CHECK = r'''
 
 
 def main():
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server = fake_nova.server(Handler)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -362,7 +364,7 @@ def main():
         with tempfile.TemporaryDirectory(prefix="nova-installed-load-", dir="/tmp") as raw:
             shell = preview.prepare_config(Path(raw), fixture)
             text = shell.read_text().replace("import QtQuick\n", "import QtQuick\nimport QtTest\n", 1)
-            text = text.rsplit("\n}", 1)[0] + QML_CHECK.replace("@PORT@", str(server.server_port)) + "\n}\n"
+            text = text.rsplit("\n}", 1)[0] + QML_CHECK.replace("@SOCKET@", server.server_address) + "\n}\n"
             shell.write_text(text)
             result = subprocess.run(["quickshell", "--path", raw], capture_output=True, text=True, timeout=45)
             output = result.stdout + result.stderr

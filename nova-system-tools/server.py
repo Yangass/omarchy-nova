@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only, loopback-only diagnostics for NOVA (CPU, memory, GPU, disks, processes, logs)."""
+"""Read-only diagnostics for NOVA (CPU, memory, GPU, disks, processes, logs), for this user only."""
 
 from __future__ import annotations
 
@@ -12,15 +12,15 @@ import shutil
 import subprocess
 import time
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from threading import Lock
 from typing import Any
 from urllib.parse import urlsplit
 
+from local_socket import OwnerOnlyHTTPServer
 
-HOST = "127.0.0.1"
-PORT = 8787
+
 MAX_PROCESSES = 40
 MAX_LOG_LINES = 100
 PROC = Path("/proc")
@@ -296,101 +296,11 @@ def openapi() -> dict[str, Any]:
                  ("/v1/logs", "get_system_logs", "Read up to 100 current-boot warning-or-worse journal lines; sensitive key-value values are redacted."),
              ]}
     paths["/health"] = {"get": {"operationId": "health_check", "summary": "Verify the service is running.", "responses": {"200": {"description": "Service health"}}}}
-    return {"openapi": "3.0.3", "info": {"title": "NOVA Read-Only System Tools", "version": "1.0.0", "description": "Loopback-only fixed diagnostics. No shell, no write, no privilege escalation."}, "servers": [{"url": f"http://{HOST}:{PORT}"}], "paths": paths}
+    return {"openapi": "3.0.3", "info": {"title": "NOVA Read-Only System Tools", "version": "1.0.0", "description": "Fixed diagnostics for this user only (a Unix socket in the user's runtime directory). No shell, no write, no privilege escalation."}, "paths": paths}
 
 
-# --- owner-only loopback (identical in novad, nova-actions and nova-system-tools) ---
-# Every local account can connect to 127.0.0.1, so a loopback port alone does not say
-# who is asking (Omarchy marketplace review, 2026-10-10). Before any request is read,
-# the kernel's socket table names the account that owns the client end of the
-# connection; anything but this desktop user, or an answer that is not exactly one
-# account, is refused by closing the connection.
-TCP_TABLES = ("/proc/net/tcp", "/proc/net/tcp6")
-
-
-def _proc_address(text):
-    import ipaddress, sys
-    host, port = text.split(":")
-    raw = bytes.fromhex(host)
-    if sys.byteorder == "little": raw = b"".join(raw[i:i + 4][::-1] for i in range(0, len(raw), 4))
-    address = ipaddress.ip_address(raw)
-    if address.version == 6 and address.ipv4_mapped: address = address.ipv4_mapped
-    return str(address), int(port, 16)
-
-
-def peer_uid(client, server, tables=TCP_TABLES):
-    """UID owning the established connection client -> server, or None unless exactly one."""
-    owners = set()
-    for table in tables:
-        try:
-            with open(table) as file: rows = file.read().splitlines()[1:]
-        except OSError: continue
-        for row in rows:
-            fields = row.split()
-            try:
-                if fields[3] != "01": continue  # ESTABLISHED
-                if _proc_address(fields[1]) == (client[0], client[1]) and _proc_address(fields[2]) == (server[0], server[1]):
-                    owners.add(int(fields[7]))
-            except (IndexError, ValueError): continue
-    return owners.pop() if len(owners) == 1 else None
-
-
-# The desktop user's own web browser passes the UID check, so a web page could still
-# send requests (cross-site request forgery) or pose as 127.0.0.1 (DNS rebinding;
-# review, 2026-10-11). Every request must therefore name this service's loopback Host
-# and, except /health, carry the key from a file only this user can read
-# (~/.config/nova/api.token, 0600). Pages can neither read that file nor add the
-# header to a cross-site request without a preflight, which is never answered.
-API_KEY_PATH = os.path.join(os.path.expanduser("~"), ".config", "nova", "api.token")
-API_KEY_HEADER = "X-Nova-Key"
-OPEN_PATHS = ("/health",)
-
-
-def api_key(path=None):
-    """The shared key, created once (0600) by whichever NOVA service starts first."""
-    import secrets
-    path = path or API_KEY_PATH
-    try:
-        with open(path) as file: value = file.read().strip()
-        if len(value) >= 32: return value
-    except FileNotFoundError: pass
-    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
-    try:
-        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(descriptor, "w") as file: file.write(secrets.token_urlsafe(32) + "\n")
-    except FileExistsError: pass
-    with open(path) as file: value = file.read().strip()
-    if len(value) < 32: raise RuntimeError("NOVA API key unavailable")
-    return value
-
-
-def _guarded(handler):
-    class Guarded(handler):
-        def parse_request(self):
-            from hmac import compare_digest
-            from urllib.parse import urlsplit
-            if not super().parse_request(): return False
-            port = self.server.server_address[1]
-            if self.headers.get("Host") not in (f"127.0.0.1:{port}", f"localhost:{port}"):
-                self.send_error(403, "Unexpected Host"); return False
-            if urlsplit(self.path).path not in OPEN_PATHS and not compare_digest(
-                    (self.headers.get(API_KEY_HEADER) or "").encode(), api_key().encode()):
-                self.send_error(401, "NOVA key required"); return False
-            return True
-    Guarded.__name__ = Guarded.__qualname__ = handler.__name__
-    return Guarded
-
-
-class OwnerOnlyHTTPServer(ThreadingHTTPServer):
-    daemon_threads = True
-
-    def __init__(self, address, handler):
-        api_key()  # create the key before the first request
-        super().__init__(address, _guarded(handler))
-
-    def verify_request(self, request, client_address):
-        return peer_uid(client_address, self.server_address[:2]) == os.getuid()
-# --- end owner-only loopback ---
+# Who may talk to this service, and how it reaches the others: local_socket.py (Unix
+# sockets in this user's runtime directory).
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -400,7 +310,8 @@ class Handler(BaseHTTPRequestHandler):
         return  # Do not write request content into logs.
 
     def send_json(self, status: HTTPStatus, payload: dict[str, Any]) -> None:
-        data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        # Ends with a newline: the panel reads NOVA's sockets line by line.
+        data = json.dumps(payload, separators=(",", ":")).encode("utf-8") + b"\n"
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
@@ -436,5 +347,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    print(f"NOVA system tools listening on http://{HOST}:{PORT}", flush=True)
-    OwnerOnlyHTTPServer((HOST, PORT), Handler).serve_forever()
+    server = OwnerOnlyHTTPServer("nova-system-tools", Handler)
+    print(f"NOVA system tools listening on {server.server_address}", flush=True)
+    server.serve_forever()

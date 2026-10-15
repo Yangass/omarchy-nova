@@ -90,8 +90,10 @@ class OnboardingPreviewTests(unittest.TestCase):
         self.assertIn("property var acceptancePreviewFixture: null", BAR)
 
     def test_preview_boundary_blocks_live_mutation_paths(self):
-        self.assertIn('property string api: "fixture://no-production-api"', TEMPLATE)
+        # No client to NOVA's socket: the panel's requests fail like an offline NOVA.
+        self.assertIn("property var novaClient: null", TEMPLATE)
         self.assertNotIn("127.0.0.1", TEMPLATE)
+        self.assertNotIn("NovaClient {", TEMPLATE)
         functions = (
             ("proposeCatalogAcquisition", "refreshRecommendations"),
             ("selectModel", "applyStreamState"),

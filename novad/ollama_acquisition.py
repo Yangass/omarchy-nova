@@ -44,8 +44,10 @@ def validate_target(descriptor):
 
 
 def connection():
-    # http.client does not follow redirects or inherit proxy environment settings.
-    return http.client.HTTPConnection('127.0.0.1', 11434, timeout=30)
+    # http.client does not follow redirects or inherit proxy environment settings; the
+    # loopback check refuses a stand-in on Ollama's port (local_socket.py).
+    from local_socket import LoopbackHTTPConnection
+    return LoopbackHTTPConnection('127.0.0.1', 11434, timeout=30)
 
 
 def local_json(path):

@@ -6,12 +6,13 @@ answers POST /models/requested by the reference's name and records every request
 """
 import json
 import os
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 import subprocess
 import tempfile
 from threading import Thread
 
+import fake_nova
 import onboarding_preview as preview
 
 REQUESTS = {"requested": [], "catalog_reads": 0, "removed": []}
@@ -79,15 +80,16 @@ class Handler(BaseHTTPRequestHandler):
 
 
 QML_CHECK = r'''
+  NovaClient { id: fakeNova; socketPath: "@SOCKET@" }
   TestCase {
     name: "AddModelInteraction"
     when: novaPanel.opened
     function check(value, message) { if (!value) throw new Error(message) }
     function item(name) { var r = findChild(novaPanel, name); check(r !== null, "missing " + name); return r }
     function get(path) {
-      var xhr = new XMLHttpRequest(), complete = false, result = null
+      var xhr = fakeNova.request(), complete = false, result = null
       xhr.onreadystatechange = function() { if (xhr.readyState === XMLHttpRequest.DONE) { result = xhr.responseText; complete = true } }
-      xhr.open("GET", previewHost.api + path); xhr.send()
+      xhr.open("GET", path); xhr.send()
       var n = 0; while (!complete && n++ < 100) wait(10)
       return JSON.parse(result)
     }
@@ -104,7 +106,7 @@ QML_CHECK = r'''
         try { fn(); results.push({name:name, passed:true}) }
         catch (e) { results.push({name:name, passed:false, error:String(e)}) }
       }
-      previewHost.api = "http://127.0.0.1:@PORT@"
+      previewHost.novaClient = fakeNova
       previewHost.acceptancePreview = false
       novaPanel.panelView = "models"; novaPanel.catalogDownloadsExpanded = true
       wait(200)
@@ -179,7 +181,7 @@ QML_CHECK = r'''
 
 
 def main():
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server = fake_nova.server(Handler)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -187,7 +189,7 @@ def main():
         with tempfile.TemporaryDirectory(prefix="nova-add-model-", dir="/tmp") as raw:
             shell = preview.prepare_config(Path(raw), fixture)
             text = shell.read_text().replace("import QtQuick\n", "import QtQuick\nimport QtTest\n", 1)
-            check = (QML_CHECK.replace("@PORT@", str(server.server_port))
+            check = (QML_CHECK.replace("@SOCKET@", server.server_address)
                      .replace("@CAPTURE@", os.environ.get("NOVA_ADD_MODEL_CAPTURE", "")))
             shell.write_text(text.rsplit("\n}", 1)[0] + check + "\n}\n")
             result = subprocess.run(["quickshell", "--path", raw], capture_output=True, text=True, timeout=90)

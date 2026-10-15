@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
-"""Loopback-only executor for NOVA's fixed, approved action catalog."""
+"""Executor for NOVA's fixed, approved action catalog, for this user only."""
 from __future__ import annotations
-import json, os, re, secrets, signal, stat, subprocess, time, urllib.error, urllib.request
+import json, os, re, secrets, signal, stat, subprocess, time
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from threading import Thread
 from typing import Any
 
-HOST, PORT = "127.0.0.1", 8791
+import local_socket
+from local_socket import OwnerOnlyHTTPServer
+
 TOKEN_PATH = Path.home() / ".config" / "nova" / "actions.token"
 USER_UID = os.getuid()
-SERVICES = {"restart_nova_system_tools": ("nova-system-tools.service", "http://127.0.0.1:8787/health"), "restart_novad": ("novad.service", "http://127.0.0.1:8790/health"), "restart_nova_actions": ("nova-actions.service", "http://127.0.0.1:8791/health")}
+SERVICES = {"restart_nova_system_tools": ("nova-system-tools.service", "nova-system-tools"), "restart_novad": ("novad.service", "novad"), "restart_nova_actions": ("nova-actions.service", "nova-actions")}
 APPLICATIONS = {"terminal": ("Terminal", ["/usr/bin/omarchy", "launch", "terminal"]), "file_manager": ("Files", ["/usr/bin/omarchy", "launch", "nautilus"]), "browser": ("Web browser", ["/usr/bin/omarchy", "launch", "browser"]), "system_monitor": ("System monitor", ["/usr/bin/omarchy", "launch", "tui", "btop"])}
 # Omarchy's configured normal-workspace bindings and layout cover 1 through 10.
 # Only the direct terminal command is safe to target: apps that reuse processes
@@ -46,10 +48,7 @@ def token() -> str:
         except FileExistsError: value = TOKEN_PATH.read_text().strip()
     os.chmod(TOKEN_PATH, 0o600); return value
 TOKEN = token()
-def health(url: str) -> bool:
-    try:
-        with urllib.request.urlopen(url, timeout=2) as response: return response.status == HTTPStatus.OK
-    except (urllib.error.URLError, TimeoutError, OSError): return False
+def health(service: str) -> bool: return local_socket.running(service)
 def service_info(service: str) -> dict[str, Any]:
     result = subprocess.run(["systemctl", "--user", "show", service, "--property=ActiveState", "--property=MainPID", "--value"], capture_output=True, text=True, timeout=5, check=False); values=result.stdout.splitlines()
     return {"active":bool(values and values[0] == "active"), "pid":int(values[1]) if len(values)>1 and values[1].isdigit() else 0}
@@ -70,13 +69,13 @@ def is_protected(item: dict[str, Any]) -> bool:
 def matches(item: dict[str, Any]) -> bool:
     current=proc(item.get("pid")); return bool(current and current["uid"] == USER_UID and current["start_time"] == item.get("start_time") and current["name"] == item.get("name") and not is_protected(current))
 def restart(action: str) -> dict[str, Any]:
-    service, url=SERVICES[action]; before=service_info(service)
+    service, name=SERVICES[action]; before=service_info(service)
     if action in ("restart_nova_actions", "restart_novad"):
         Thread(target=lambda: (time.sleep(.25), subprocess.run(["systemctl","--user","restart",service],capture_output=True,text=True,timeout=15,check=False)),daemon=True).start()
         return {"status":"scheduled","action":action,"service":service,"pid_before":before["pid"]}
     result=subprocess.run(["systemctl","--user","restart",service],capture_output=True,text=True,timeout=15,check=False); deadline=time.monotonic()+12; after=service_info(service)
-    while time.monotonic()<deadline and not (result.returncode==0 and after["active"] and health(url)): time.sleep(.25); after=service_info(service)
-    return {"status":"success" if result.returncode==0 and after["active"] and health(url) else "failure","action":action,"service":service,"active":after["active"],"health":"ok" if health(url) else "unavailable","pid_before":before["pid"],"pid_after":after["pid"],"pid_changed":before["pid"]!=after["pid"]}
+    while time.monotonic()<deadline and not (result.returncode==0 and after["active"] and health(name)): time.sleep(.25); after=service_info(service)
+    return {"status":"success" if result.returncode==0 and after["active"] and health(name) else "failure","action":action,"service":service,"active":after["active"],"health":"ok" if health(name) else "unavailable","pid_before":before["pid"],"pid_after":after["pid"],"pid_changed":before["pid"]!=after["pid"]}
 def terminate(item: dict[str, Any]) -> dict[str, Any]:
     if not matches(item): return {"status":"failure","action":"terminate_user_process","error":"stale_action_target"}
     try: os.kill(item["pid"], signal.SIGTERM)
@@ -332,107 +331,17 @@ def body(handler: BaseHTTPRequestHandler) -> dict[str, Any] | None:
     try:
         value=json.loads(handler.rfile.read(size).decode()); return value if isinstance(value,dict) else None
     except (UnicodeDecodeError,ValueError): return None
-# --- owner-only loopback (identical in novad, nova-actions and nova-system-tools) ---
-# Every local account can connect to 127.0.0.1, so a loopback port alone does not say
-# who is asking (Omarchy marketplace review, 2026-10-10). Before any request is read,
-# the kernel's socket table names the account that owns the client end of the
-# connection; anything but this desktop user, or an answer that is not exactly one
-# account, is refused by closing the connection.
-TCP_TABLES = ("/proc/net/tcp", "/proc/net/tcp6")
-
-
-def _proc_address(text):
-    import ipaddress, sys
-    host, port = text.split(":")
-    raw = bytes.fromhex(host)
-    if sys.byteorder == "little": raw = b"".join(raw[i:i + 4][::-1] for i in range(0, len(raw), 4))
-    address = ipaddress.ip_address(raw)
-    if address.version == 6 and address.ipv4_mapped: address = address.ipv4_mapped
-    return str(address), int(port, 16)
-
-
-def peer_uid(client, server, tables=TCP_TABLES):
-    """UID owning the established connection client -> server, or None unless exactly one."""
-    owners = set()
-    for table in tables:
-        try:
-            with open(table) as file: rows = file.read().splitlines()[1:]
-        except OSError: continue
-        for row in rows:
-            fields = row.split()
-            try:
-                if fields[3] != "01": continue  # ESTABLISHED
-                if _proc_address(fields[1]) == (client[0], client[1]) and _proc_address(fields[2]) == (server[0], server[1]):
-                    owners.add(int(fields[7]))
-            except (IndexError, ValueError): continue
-    return owners.pop() if len(owners) == 1 else None
-
-
-# The desktop user's own web browser passes the UID check, so a web page could still
-# send requests (cross-site request forgery) or pose as 127.0.0.1 (DNS rebinding;
-# review, 2026-10-11). Every request must therefore name this service's loopback Host
-# and, except /health, carry the key from a file only this user can read
-# (~/.config/nova/api.token, 0600). Pages can neither read that file nor add the
-# header to a cross-site request without a preflight, which is never answered.
-API_KEY_PATH = os.path.join(os.path.expanduser("~"), ".config", "nova", "api.token")
-API_KEY_HEADER = "X-Nova-Key"
-OPEN_PATHS = ("/health",)
-
-
-def api_key(path=None):
-    """The shared key, created once (0600) by whichever NOVA service starts first."""
-    import secrets
-    path = path or API_KEY_PATH
-    try:
-        with open(path) as file: value = file.read().strip()
-        if len(value) >= 32: return value
-    except FileNotFoundError: pass
-    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
-    try:
-        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(descriptor, "w") as file: file.write(secrets.token_urlsafe(32) + "\n")
-    except FileExistsError: pass
-    with open(path) as file: value = file.read().strip()
-    if len(value) < 32: raise RuntimeError("NOVA API key unavailable")
-    return value
-
-
-def _guarded(handler):
-    class Guarded(handler):
-        def parse_request(self):
-            from hmac import compare_digest
-            from urllib.parse import urlsplit
-            if not super().parse_request(): return False
-            port = self.server.server_address[1]
-            if self.headers.get("Host") not in (f"127.0.0.1:{port}", f"localhost:{port}"):
-                self.send_error(403, "Unexpected Host"); return False
-            if urlsplit(self.path).path not in OPEN_PATHS and not compare_digest(
-                    (self.headers.get(API_KEY_HEADER) or "").encode(), api_key().encode()):
-                self.send_error(401, "NOVA key required"); return False
-            return True
-    Guarded.__name__ = Guarded.__qualname__ = handler.__name__
-    return Guarded
-
-
-class OwnerOnlyHTTPServer(ThreadingHTTPServer):
-    daemon_threads = True
-
-    def __init__(self, address, handler):
-        api_key()  # create the key before the first request
-        super().__init__(address, _guarded(handler))
-
-    def verify_request(self, request, client_address):
-        return peer_uid(client_address, self.server_address[:2]) == os.getuid()
-# --- end owner-only loopback ---
+# Who may talk to this service, and how it reaches the others: local_socket.py (Unix
+# sockets in this user's runtime directory).
 
 
 class Handler(BaseHTTPRequestHandler):
     server_version="nova-actions/0.7.0"
     def log_message(self,*_: Any)->None:return
     def reply(self,status:HTTPStatus,value:dict[str,Any])->None:
-        raw=json.dumps(value,separators=(",",":")).encode(); self.send_response(status); self.send_header("Content-Type","application/json"); self.send_header("Content-Length",str(len(raw))); self.send_header("Cache-Control","no-store"); self.end_headers(); self.wfile.write(raw)
+        raw=json.dumps(value,separators=(",",":")).encode()+b"\n"; self.send_response(status); self.send_header("Content-Type","application/json"); self.send_header("Content-Length",str(len(raw))); self.send_header("Cache-Control","no-store"); self.end_headers(); self.wfile.write(raw)
     def do_GET(self)->None:
-        if self.path=="/health":self.reply(HTTPStatus.OK,{"status":"ok","loopback_only":True,"pid":os.getpid()})
+        if self.path=="/health":self.reply(HTTPStatus.OK,{"status":"ok","local_only":True,"pid":os.getpid()})
         elif self.path=="/v1/coding-cli-profiles":
             if not bearer_ok(self.headers.get("Authorization")):self.reply(HTTPStatus.UNAUTHORIZED,{"error":"unauthorized"});return
             self.reply(HTTPStatus.OK,list_cli_profiles())
@@ -454,4 +363,4 @@ class Handler(BaseHTTPRequestHandler):
         audit("execution_completed",action=action,application_id=result.get("application_id", snapshot.get("application_id") if action=="open_known_application" else None),workspace=result.get("workspace", snapshot.get("workspace") if action=="open_known_application" else None),status=result.get("status"),error=result.get("error"));self.reply(HTTPStatus.OK if result.get("status") in ("success","scheduled","dispatched") else HTTPStatus.CONFLICT,result)
     def do_PUT(self)->None:self.reply(HTTPStatus.METHOD_NOT_ALLOWED,{"error":"post_only"})
     def do_DELETE(self)->None:self.do_PUT()
-if __name__=="__main__":OwnerOnlyHTTPServer((HOST,PORT),Handler).serve_forever()
+if __name__=="__main__":OwnerOnlyHTTPServer("nova-actions",Handler).serve_forever()

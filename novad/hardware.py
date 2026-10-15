@@ -1,5 +1,6 @@
 """Read-only local facts. Capacity drives fit; samples never reduce that capacity."""
 from __future__ import annotations
+import http.client
 import json
 import math
 import os
@@ -35,24 +36,14 @@ def command(args):
     except (OSError, subprocess.SubprocessError): return ''
 
 
-API_KEY_FILE = Path.home() / '.config' / 'nova' / 'api.token'
-
-
-def _nova_key_headers():
-    """nova-system-tools needs the per-user key (0.14.1). Without it the GPU telemetry
-    quietly came back empty and the RTX's memory size was lost (found 2026-10-12)."""
-    try: key = API_KEY_FILE.read_text().strip()
-    except OSError: return {}
-    return {'X-Nova-Key': key} if len(key) >= 32 else {}
-
-
 def telemetry(path):
+    """nova-system-tools over its socket (local_socket.py)."""
+    import local_socket
     try:
-        request = urllib.request.Request('http://127.0.0.1:8787/v1/' + path, headers=_nova_key_headers())
-        with urllib.request.urlopen(request, timeout=4) as r:
-            value = json.loads(r.read(1_000_000))
-            return value if isinstance(value, dict) else {}
-    except (OSError, ValueError): return {}
+        status, raw = local_socket.call('nova-system-tools', 'GET', '/v1/' + path, timeout=4)
+        value = json.loads(raw[:1_000_000]) if status == 200 else {}
+        return value if isinstance(value, dict) else {}
+    except (OSError, ValueError, http.client.HTTPException): return {}
 
 
 def storage_profile():

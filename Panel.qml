@@ -489,7 +489,7 @@ Ui.Panel {
     var name = String(modelData.display_name || modelData.catalog_id).replace(/\s*\([^)]*\)\s*$/, "")
     addModelBusy = true; addModelFailed = false
     addModelStatus = "Removing " + name + " from your list…"
-    var xhr = new XMLHttpRequest()
+    var xhr = root.novaRequest()
     xhr.onreadystatechange = function() {
       if (xhr.readyState !== XMLHttpRequest.DONE) return
       var result = null
@@ -503,7 +503,7 @@ Ui.Panel {
       if (status === "removed" || status === "not_found") root.refreshCatalog()
     }
     try {
-      root.openNova(xhr, "DELETE", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/models/requested/" + encodeURIComponent(modelData.catalog_id))
+      root.openNova(xhr, "DELETE", "/models/requested/" + encodeURIComponent(modelData.catalog_id))
       xhr.timeout = 15000
       xhr.send()
     } catch (error) { addModelBusy = false; addModelFailed = true; addModelStatus = "NOVA's background service didn't answer. Try again in a moment." }
@@ -513,7 +513,7 @@ Ui.Panel {
     if (reference === "" || addModelBusy || acceptancePreview) return
     addModelBusy = true; addModelFailed = false
     addModelStatus = "Looking up " + reference + " in Ollama's library…"
-    var xhr = new XMLHttpRequest()
+    var xhr = root.novaRequest()
     xhr.onreadystatechange = function() {
       if (xhr.readyState !== XMLHttpRequest.DONE) return
       var result = null
@@ -536,7 +536,7 @@ Ui.Panel {
       }
     }
     try {
-      root.openNova(xhr, "POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/models/requested")
+      root.openNova(xhr, "POST", "/models/requested")
       xhr.setRequestHeader("Content-Type", "application/json")
       xhr.timeout = 120000  // the registry probe reads a few small blobs
       xhr.send(JSON.stringify({ reference: reference }))
@@ -775,7 +775,7 @@ Ui.Panel {
     onboardingState = "CHECKING"
     onboardingActions = []
     var serial = ++onboardingRequestSerial
-    var xhr = new XMLHttpRequest()
+    var xhr = root.novaRequest()
     var finished = false
     function finishUnavailable() {
       if (finished || serial !== onboardingRequestSerial) return
@@ -836,7 +836,7 @@ Ui.Panel {
     }
     xhr.onerror = finishUnavailable
     xhr.ontimeout = finishUnavailable
-    root.openNova(xhr, "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/onboarding/state")
+    root.openNova(xhr, "GET", "/onboarding/state")
     // The backend's 30-second collection budget is cooperative. This transport
     // deadline is the panel's hard bound and does not imply that an aborted
     // read-only server collector was cancelled.
@@ -1200,7 +1200,7 @@ Ui.Panel {
     if (installedModelsLoading) return
     installedModelsLoading = true
     var serial = ++modelsRequestSerial
-    var xhr = new XMLHttpRequest()
+    var xhr = root.novaRequest()
     var finished = false
     function finish(status, body) {
       if (finished) return
@@ -1217,7 +1217,7 @@ Ui.Panel {
     modelsRequestTimeoutCallback = function() { finish(0, "") }
     modelsRequestDeadline.restart()
     try {
-      root.openNova(xhr, "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/models")
+      root.openNova(xhr, "GET", "/models")
       xhr.timeout = 2000
       xhr.send()
     } catch (error) { finish(0, "") }
@@ -1252,7 +1252,7 @@ Ui.Panel {
     if (acceptancePreview) return
     modelFits = ({})
     hardwareSummary = "LOCAL AI // FIT PENDING"
-    var xhr = new XMLHttpRequest()
+    var xhr = root.novaRequest()
     xhr.onreadystatechange = function() {
       if (xhr.readyState !== XMLHttpRequest.DONE) return
       if (xhr.status !== 200) { hardwareSummary = "LOCAL AI // FIT UNAVAILABLE"; return }
@@ -1268,7 +1268,7 @@ Ui.Panel {
         hardwareSummary = "LOCAL AI // " + device + " · RAM " + bytesLabel(cap.memory.total_bytes) + " · EST. BUDGET " + bytesLabel(budget.operating_budget_bytes) + (payload.provider_available ? "" : " · OLLAMA OFFLINE")
       } catch (error) { hardwareSummary = "LOCAL AI // FIT UNAVAILABLE" }
     }
-    root.openNova(xhr, "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/models/fit")
+    root.openNova(xhr, "GET", "/models/fit")
     xhr.timeout = 20000
     xhr.send()
   }
@@ -1276,7 +1276,7 @@ Ui.Panel {
     if (acceptancePreview) return
     refreshModelUpdates(false)  // novad only asks Ollama when the weekly check is due
     catalogSummary = "CATALOG // CHECKING"
-    var xhr = new XMLHttpRequest()
+    var xhr = root.novaRequest()
     xhr.onreadystatechange = function() {
       if (xhr.readyState !== XMLHttpRequest.DONE) return
       if (xhr.status !== 200) { catalogSummary = "CATALOG // UNAVAILABLE"; return }
@@ -1297,14 +1297,14 @@ Ui.Panel {
         else catalogSummary = "CATALOG // LOCAL // " + (Number(payload.record_count) || 0) + " MODELS // EXACT " + exact
       } catch (error) { catalogSummary = "CATALOG // UNAVAILABLE" }
     }
-    root.openNova(xhr, "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/catalog/models")
+    root.openNova(xhr, "GET", "/catalog/models")
     xhr.timeout = 2000
     xhr.send()
   }
   function refreshPreflight(modelData) {
     if (acceptancePreview) return
     if (!modelData || typeof modelData.catalog_id !== "string") return
-    var xhr = new XMLHttpRequest()
+    var xhr = root.novaRequest()
     xhr.onreadystatechange = function() {
       if (xhr.readyState !== XMLHttpRequest.DONE) return
       var next = ({})
@@ -1315,7 +1315,7 @@ Ui.Panel {
       } else next[modelData.catalog_id] = { status: "UNKNOWN" }
       preflightByCatalog = next
     }
-    root.openNova(xhr, "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/acquisition/models/" + encodeURIComponent(modelData.catalog_id) + "/preflight")
+    root.openNova(xhr, "GET", "/acquisition/models/" + encodeURIComponent(modelData.catalog_id) + "/preflight")
     xhr.timeout = 5000
     xhr.send()
   }
@@ -1429,7 +1429,7 @@ Ui.Panel {
       finishRecoveryAssessment(id, 200, JSON.stringify(acceptancePreviewFixture.recovery_assessment || ({ })))
       return
     }
-    var xhr = new XMLHttpRequest(), finished = false
+    var xhr = root.novaRequest(), finished = false
     function finish(status, body) {
       if (finished) return
       finished = true
@@ -1441,7 +1441,7 @@ Ui.Panel {
     xhr.onerror = function() { finish(0, "") }; xhr.ontimeout = function() { finish(0, "") }
     try {
       recoveryRequestTimeoutCallback = function() { finish(0, "") }; recoveryRequestDeadline.restart()
-      root.openNova(xhr, "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/acquisitions/" + encodeURIComponent(id) + "/recovery")
+      root.openNova(xhr, "GET", "/acquisitions/" + encodeURIComponent(id) + "/recovery")
       xhr.send()
     } catch (error) { finish(0, "") }
   }
@@ -1481,7 +1481,7 @@ Ui.Panel {
       finishRecoveryDecision(item.id, 201, JSON.stringify({outcome:item.assessment.artifact_state === "EXACT" ? "EXACT_INSTALLED" : "RETRY_ALLOWED", retry_allowed:item.assessment.artifact_state === "ABSENT"}))
       return
     }
-    var xhr = new XMLHttpRequest(), finished = false
+    var xhr = root.novaRequest(), finished = false
     function finish(status, response) {
       if (finished) return
       finished = true
@@ -1493,7 +1493,7 @@ Ui.Panel {
     xhr.onerror = function() { finish(0, "") }; xhr.ontimeout = function() { finish(0, "") }
     try {
       recoveryRequestTimeoutCallback = function() { finish(0, "") }; recoveryRequestDeadline.restart()
-      root.openNova(xhr, "POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/acquisitions/" + encodeURIComponent(item.id) + "/resolve-recovery")
+      root.openNova(xhr, "POST", "/acquisitions/" + encodeURIComponent(item.id) + "/resolve-recovery")
       xhr.setRequestHeader("Content-Type", "application/json"); xhr.send(JSON.stringify(body))
     } catch (error) { finish(0, "") }
   }
@@ -1546,7 +1546,7 @@ Ui.Panel {
   }
   function refreshAcquisitions() {
     if (acceptancePreview) return
-    var xhr = new XMLHttpRequest()
+    var xhr = root.novaRequest()
     xhr.onreadystatechange = function() {
       if (xhr.readyState !== XMLHttpRequest.DONE) return
       if (xhr.status !== 200) { acquisitionStatus = "ACQUISITION STATUS UNAVAILABLE"; return }
@@ -1566,7 +1566,7 @@ Ui.Panel {
         if (trackedAcquisitionId !== "") refreshTrackedAcquisition()
       } catch (error) { acquisitionStatus = "ACQUISITION STATUS UNAVAILABLE" }
     }
-    root.openNova(xhr, "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/acquisitions")
+    root.openNova(xhr, "GET", "/acquisitions")
     xhr.timeout = 2000
     xhr.send()
   }
@@ -1650,7 +1650,7 @@ Ui.Panel {
   function refreshTrackedAcquisition() {
     if (acceptancePreview) return
     if (trackedAcquisitionId === "") return
-    var xhr = new XMLHttpRequest()
+    var xhr = root.novaRequest()
     xhr.onreadystatechange = function() {
       if (xhr.readyState !== XMLHttpRequest.DONE) return
       if (xhr.status !== 200) { acquisitionStatus = "ACQUISITION STATUS UNAVAILABLE"; acquisitionTimer.stop(); return }
@@ -1658,7 +1658,7 @@ Ui.Panel {
         applyTrackedAcquisition(JSON.parse(xhr.responseText))
       } catch (error) { acquisitionStatus = "ACQUISITION STATUS UNAVAILABLE"; acquisitionTimer.stop() }
     }
-    root.openNova(xhr, "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/acquisitions/" + encodeURIComponent(trackedAcquisitionId))
+    root.openNova(xhr, "GET", "/acquisitions/" + encodeURIComponent(trackedAcquisitionId))
     xhr.timeout = 2000
     xhr.send()
   }
@@ -1715,7 +1715,7 @@ Ui.Panel {
     var model = modelData.id
     removalBusy = true
     setRemovalStatus(model, "Checking whether " + model + " can be deleted…", false)
-    var xhr = new XMLHttpRequest()
+    var xhr = root.novaRequest()
     xhr.onreadystatechange = function() {
       if (xhr.readyState !== XMLHttpRequest.DONE) return
       root.removalBusy = false
@@ -1733,7 +1733,7 @@ Ui.Panel {
       } else root.reportModelResult(model, "NOVA's background service didn't answer. Nothing was deleted.", false)
     }
     try {
-      root.openNova(xhr, "POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/models/installed/" + encodeURIComponent(model) + "/remove")
+      root.openNova(xhr, "POST", "/models/installed/" + encodeURIComponent(model) + "/remove")
       xhr.timeout = 15000
       xhr.send()
     } catch (error) { removalBusy = false; reportModelResult(model, "NOVA's background service didn't answer. Nothing was deleted.", false) }
@@ -1754,7 +1754,7 @@ Ui.Panel {
     var model = modelData.id
     removalBusy = true
     setRemovalStatus(model, "Freeing " + memoryWord + "…", false)
-    var xhr = new XMLHttpRequest()
+    var xhr = root.novaRequest()
     xhr.onreadystatechange = function() {
       if (xhr.readyState !== XMLHttpRequest.DONE) return
       root.removalBusy = false
@@ -1773,7 +1773,7 @@ Ui.Panel {
       root.refreshModels()
     }
     try {
-      root.openNova(xhr, "POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/models/installed/" + encodeURIComponent(model) + "/unload")
+      root.openNova(xhr, "POST", "/models/installed/" + encodeURIComponent(model) + "/unload")
       xhr.timeout = 45000
       xhr.send()
     } catch (error) { removalBusy = false; reportModelResult(model, "NOVA's background service didn't answer.", false, true) }
@@ -1806,7 +1806,7 @@ Ui.Panel {
     if (typeof catalogId !== "string" || catalogId === "" || pendingApproval !== null
         || chatBusy || modelTransitionActive) return
     acquisitionStatus = "PREPARING INSTALL // " + String(displayName || catalogId).toUpperCase()
-    var xhr = new XMLHttpRequest()
+    var xhr = root.novaRequest()
     xhr.onreadystatechange = function() {
       if (xhr.readyState !== XMLHttpRequest.DONE) return
       try {
@@ -1837,17 +1837,24 @@ Ui.Panel {
         acquisitionStatus = "AWAITING INSTALL APPROVAL"
       } catch (error) { acquisitionStatus = "INSTALL NOT AVAILABLE" }
     }
-    root.openNova(xhr, "POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/acquisition/models/" + encodeURIComponent(catalogId) + "/propose")
+    root.openNova(xhr, "POST", "/acquisition/models/" + encodeURIComponent(catalogId) + "/propose")
     xhr.timeout = 45000  // novad first checks with Ollama whether the tag was re-published
     xhr.send()
   }
-  // Every request to NOVA carries the key only this user can read (marketplace review,
-  // 2026-10-11): a web page in the user's browser can neither read it nor send it.
-  readonly property string novaKey: hostWidget && typeof hostWidget.apiKey === "string" ? hostWidget.apiKey : ""
-  function openNova(xhr, method, url) {
-    xhr.open(method, url)
-    if (novaKey !== "") xhr.setRequestHeader("X-Nova-Key", novaKey)
+  // Every request to NOVA goes over its private socket (BarWidget.novaRequest,
+  // local_socket.py): only this user's processes can reach it or answer on it, web pages
+  // can't reach it at all, and no key is sent (marketplace reviews 2026-10-11, 2026-10-14).
+  function novaRequest() {
+    if (hostWidget && hostWidget.novaClient) return hostWidget.novaClient.request()
+    // No bar (previews): the request fails like an offline NOVA.
+    var r = { readyState: 0, status: 0, responseText: "", timeout: 0, onreadystatechange: null, onload: null, onerror: null, ontimeout: null }
+    r.open = function() { r.readyState = 1 }
+    r.setRequestHeader = function() {}
+    r.abort = function() {}
+    r.send = function() { Qt.callLater(function() { r.readyState = 4; if (r.onreadystatechange) r.onreadystatechange(); if (r.onerror) r.onerror() }) }
+    return r
   }
+  function openNova(xhr, method, path) { xhr.open(method, path) }
   // 0.14.0 model updates (mock previews/model-updates, Konstantin 2026-10-10): novad checks
   // installed models against Ollama's library once a week or on REFRESH. NOVA never
   // downloads on its own: UPDATE opens the normal approval card for the newer build.
@@ -1863,13 +1870,13 @@ Ui.Panel {
   }
   function refreshModelUpdates(force) {
     if (acceptancePreview) return
-    var xhr = new XMLHttpRequest()
+    var xhr = root.novaRequest()
     xhr.onreadystatechange = function() {
       if (xhr.readyState !== XMLHttpRequest.DONE) return
       if (xhr.status !== 200 && xhr.status !== 202) { root.modelUpdatesChecking = false; return }
       try { root.applyModelUpdates(JSON.parse(xhr.responseText)) } catch (error) { root.modelUpdatesChecking = false }
     }
-    root.openNova(xhr, force ? "POST" : "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + (force ? "/models/updates/check" : "/models/updates"))
+    root.openNova(xhr, force ? "POST" : "GET", (force ? "/models/updates/check" : "/models/updates"))
     xhr.timeout = 5000
     xhr.send()
   }
@@ -1920,13 +1927,13 @@ Ui.Panel {
     var update = modelUpdateFor(modelData)
     if (!update || !update.catalog_id || modelUpdateBusy !== "") return
     modelUpdateBusy = update.catalog_id
-    var xhr = new XMLHttpRequest()
+    var xhr = root.novaRequest()
     xhr.onreadystatechange = function() {
       if (xhr.readyState !== XMLHttpRequest.DONE) return
       root.modelUpdateBusy = ""
       if (xhr.status === 200) { try { root.applyModelUpdates(JSON.parse(xhr.responseText)) } catch (error) { } }
     }
-    root.openNova(xhr, "POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/models/updates/" + encodeURIComponent(update.catalog_id) + (skip ? "/skip" : "/unskip"))
+    root.openNova(xhr, "POST", "/models/updates/" + encodeURIComponent(update.catalog_id) + (skip ? "/skip" : "/unskip"))
     xhr.timeout = 5000
     xhr.send()
   }
@@ -1948,7 +1955,7 @@ Ui.Panel {
     var name = modelPlainName(modelData.id)
     modelUpdateBusy = update.catalog_id
     acquisitionStatus = "PREPARING UPDATE // " + name.toUpperCase()
-    var xhr = new XMLHttpRequest()
+    var xhr = root.novaRequest()
     xhr.onreadystatechange = function() {
       if (xhr.readyState !== XMLHttpRequest.DONE) return
       root.modelUpdateBusy = ""
@@ -1977,7 +1984,7 @@ Ui.Panel {
         acquisitionStatus = "AWAITING UPDATE APPROVAL // " + name.toUpperCase()
       } catch (error) { acquisitionStatus = "UPDATE NOT AVAILABLE" }
     }
-    root.openNova(xhr, "POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/acquisition/models/" + encodeURIComponent(update.catalog_id) + "/propose-update")
+    root.openNova(xhr, "POST", "/acquisition/models/" + encodeURIComponent(update.catalog_id) + "/propose-update")
     xhr.timeout = 45000  // novad re-reads Ollama's library before proposing
     xhr.send()
   }
@@ -2049,14 +2056,14 @@ Ui.Panel {
       root.modelSuggestions = merged
     }
     ;[["everyday use", "general"], ["coding", "coding"]].forEach(function(pair) {
-      var xhr = new XMLHttpRequest()
+      var xhr = root.novaRequest()
       xhr.onreadystatechange = function() {
         if (xhr.readyState !== XMLHttpRequest.DONE) return
         try { if (xhr.status === 200) root.applySuggestions(pair[0], JSON.parse(xhr.responseText), merged) } catch (error) {}
         done()
       }
       try {
-        root.openNova(xhr, "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/recommendations/models?profile=" + pair[1] + "&scope=known")
+        root.openNova(xhr, "GET", "/recommendations/models?profile=" + pair[1] + "&scope=known")
         xhr.timeout = 20000
         xhr.send()
       } catch (error) { done() }
@@ -2094,7 +2101,7 @@ Ui.Panel {
     if (acceptancePreview) return
     refreshSuggestions()
     recommendationSummary = "RECOMMEND // CHECKING"
-    var xhr = new XMLHttpRequest()
+    var xhr = root.novaRequest()
     xhr.onreadystatechange = function() {
       if (xhr.readyState !== XMLHttpRequest.DONE) return
       if (xhr.status !== 200) { recommendationSummary = "RECOMMEND // UNAVAILABLE"; return }
@@ -2114,7 +2121,7 @@ Ui.Panel {
         recommendationSummary = payload.status === "RECOMMENDATION_UNAVAILABLE" ? "RECOMMEND // UNAVAILABLE" : "RECOMMEND // INSUFFICIENT EVIDENCE"
       } catch (error) { recommendationSummary = "RECOMMEND // UNAVAILABLE" }
     }
-    root.openNova(xhr, "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/recommendations/models")
+    root.openNova(xhr, "GET", "/recommendations/models")
     xhr.timeout = 20000
     xhr.send()
   }
@@ -2313,7 +2320,7 @@ Ui.Panel {
     onboardingRequestInFlight = false
     onboardingSnapshotFresh = false
     onboardingState = "ACTIVATING"; onboardingActions = []; onboardingTarget = modelId
-    var xhr = new XMLHttpRequest()
+    var xhr = root.novaRequest()
     var finished = false
     function finish(status, text) {
       if (finished) return
@@ -2373,7 +2380,7 @@ Ui.Panel {
     xhr.onerror = function() { finish(0,"") }
     xhr.ontimeout = function() { finish(0,"") }
     try {
-      root.openNova(xhr, "POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/model/active")
+      root.openNova(xhr, "POST", "/model/active")
       xhr.setRequestHeader("Content-Type", "application/json")
       // Covers the bounded target-load plus worst-case rollback window.
       xhr.timeout = 500000
@@ -2419,7 +2426,7 @@ Ui.Panel {
   property bool cliLaunchUnconfirmed: false  // cliStatus says NOVA could not confirm the terminal yet
   function refreshCliProfiles() {
     if (acceptancePreview) return
-    var xhr = new XMLHttpRequest()
+    var xhr = root.novaRequest()
     xhr.onreadystatechange = function() {
       if (xhr.readyState !== XMLHttpRequest.DONE) return
       var payload = null
@@ -2438,7 +2445,7 @@ Ui.Panel {
       }
     }
     try {
-      root.openNova(xhr, "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/cli/profiles")
+      root.openNova(xhr, "GET", "/cli/profiles")
       xhr.timeout = 6000
       xhr.send()
     } catch (error) { cliState = null }
@@ -2609,7 +2616,7 @@ Ui.Panel {
     cliStatusIsReason = false
     cliLaunchUnconfirmed = false
     cliStatus = "REQUESTING CLI LAUNCH…"
-    var xhr = new XMLHttpRequest()
+    var xhr = root.novaRequest()
     xhr.onreadystatechange = function() {
       if (xhr.readyState !== XMLHttpRequest.DONE) return
       var result = null
@@ -2629,7 +2636,7 @@ Ui.Panel {
       cliFollowUp.restart()
     }
     try {
-      root.openNova(xhr, "POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/cli/launch")
+      root.openNova(xhr, "POST", "/cli/launch")
       xhr.setRequestHeader("Content-Type", "application/json")
       xhr.timeout = 15000
       xhr.send(JSON.stringify({ profile_id: profile.id, model: item.provider === "online" ? "online" : item.id }))
@@ -2784,7 +2791,7 @@ Ui.Panel {
       restoreChatInputFocus()
       return
     }
-    var xhr = new XMLHttpRequest(), finished = false
+    var xhr = root.novaRequest(), finished = false
     function finish(status, body) {
       if (finished) return
       finished = true
@@ -2800,7 +2807,7 @@ Ui.Panel {
     try {
       approvalRequestTimeoutCallback = function() { finish(0, "") }
       approvalDecisionDeadline.restart()
-      root.openNova(xhr, "POST", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/approvals/" + encodeURIComponent(item.id) + "/" + decision)
+      root.openNova(xhr, "POST", "/approvals/" + encodeURIComponent(item.id) + "/" + decision)
       xhr.send()
     } catch (error) { finish(0, "") }
   }
@@ -2867,7 +2874,7 @@ Ui.Panel {
   }
   function checkNovadRecovery() {
     if (acceptancePreview) return
-    var xhr = new XMLHttpRequest()
+    var xhr = root.novaRequest()
     xhr.onreadystatechange = function() {
       if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
         reconnectTimer.stop()
@@ -2875,7 +2882,7 @@ Ui.Panel {
         addChat("assistant", "NOVA backend is online.")
       }
     }
-    root.openNova(xhr, "GET", (hostWidget ? hostWidget.api : "http://127.0.0.1:8790") + "/health")
+    root.openNova(xhr, "GET", "/health")
     xhr.timeout = 1500
     xhr.send()
   }
@@ -3010,14 +3017,11 @@ Ui.Panel {
       Qt.callLater(function() { if (chatViewport) chatViewport.programmaticScroll = false })
     })
   }
-  function chatApiBase() {
-    return hostWidget ? hostWidget.api : "http://127.0.0.1:8790"
-  }
   function createChatSession(message, sendAfterCreate) {
     if (acceptancePreview || chatSessionSetupInFlight) return
     chatSessionSetupInFlight = true
     var setupSerial = ++chatSessionSetupSerial
-    var xhr = new XMLHttpRequest(), finished = false
+    var xhr = root.novaRequest(), finished = false
     function finish(status, body) {
       if (finished || setupSerial !== chatSessionSetupSerial) return
       finished = true
@@ -3054,8 +3058,10 @@ Ui.Panel {
     }
     xhr.onerror = function() { finish(0, "") }
     xhr.ontimeout = function() { finish(0, "") }
-    root.openNova(xhr, "POST", chatApiBase() + "/chat/sessions")
-    xhr.timeout = 5000
+    root.openNova(xhr, "POST", "/chat/sessions")
+    // New chat bounds its own creation with chatResetDeadline (5 s, reports the result as
+    // uncertain); the request outlives it, so the two never race (2026-10-15).
+    xhr.timeout = chatResetPendingClear !== 0 ? 10000 : 5000
     xhr.send()
   }
   function contextLossConfirmed(message, requestSerial, sessionId, generation, completed) {
@@ -3090,7 +3096,7 @@ Ui.Panel {
       chatRetentionSerial++
     }
     var reconciliationSerial = chatRetentionSerial
-    var xhr = new XMLHttpRequest(), finished = false
+    var xhr = root.novaRequest(), finished = false
     function retryOrUnknown() {
       if (reconciliationSerial !== chatRetentionSerial) return
       if (attempt >= 5) {
@@ -3142,7 +3148,7 @@ Ui.Panel {
     }
     xhr.onerror = function() { finishRetentionReconciliation(reconciliationSerial, "Whether this reply will be remembered is unknown.") }
     xhr.ontimeout = function() { finishRetentionReconciliation(reconciliationSerial, "Whether this reply will be remembered is unknown.") }
-    root.openNova(xhr, "GET", chatApiBase() + "/chat/sessions/" + encodeURIComponent(sessionId))
+    root.openNova(xhr, "GET", "/chat/sessions/" + encodeURIComponent(sessionId))
     xhr.timeout = 1500
     xhr.send()
   }
@@ -3163,7 +3169,7 @@ Ui.Panel {
     chatBusy = true
     chatStartedAt = Date.now()
     chatLoadsModel = modelLoadsOnSend && !activeModelRuntimeReady
-    var xhr = new XMLHttpRequest()
+    var xhr = root.novaRequest()
     var offset = 0
     var buffer = ""
     var streamDone = false
@@ -3238,7 +3244,7 @@ Ui.Panel {
     }
     xhr.onerror = function() { stopWithError("novad chat unavailable", true) }
     xhr.ontimeout = function() { stopWithError("novad chat timed out", true) }
-    root.openNova(xhr, "POST", chatApiBase() + "/chat/stream")
+    root.openNova(xhr, "POST", "/chat/stream")
     xhr.setRequestHeader("Content-Type", "application/json")
     xhr.setRequestHeader("Accept", "text/event-stream")
     xhr.timeout = 190000
@@ -3322,7 +3328,7 @@ Ui.Panel {
     }
     var targetSessionId = chatSessionId
     var targetGeneration = chatSessionGeneration
-    var xhr = new XMLHttpRequest(), finished = false
+    var xhr = root.novaRequest(), finished = false
     function finish(status, body) {
       if (finished) return
       finished = true
@@ -3359,7 +3365,7 @@ Ui.Panel {
     }
     xhr.onerror = function() { finish(0, "") }
     xhr.ontimeout = function() { finish(0, "") }
-    root.openNova(xhr, "POST", chatApiBase() + "/chat/sessions/" + encodeURIComponent(targetSessionId) + "/reset")
+    root.openNova(xhr, "POST", "/chat/sessions/" + encodeURIComponent(targetSessionId) + "/reset")
     xhr.timeout = 5000
     xhr.send()
   }

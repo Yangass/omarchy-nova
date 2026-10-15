@@ -20,14 +20,13 @@ import subprocess
 import sys
 import tempfile
 import time
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
 
 PLUGIN_ID = "io.github.yangass.nova"
 # wave.frag.qsb is the compiled living-wave shader (tools/build_wave_shader.py).
 # NovaMark.qml is NOVA's drawn logo, shared by the bar and the panel header.
-PLUGIN_FILES = ("manifest.json", "BarWidget.qml", "Panel.qml", "wave.frag.qsb", "NovaMark.qml")
+# NovaClient.qml is how the bar and the panel reach novad (its private socket).
+PLUGIN_FILES = ("manifest.json", "BarWidget.qml", "Panel.qml", "wave.frag.qsb", "NovaMark.qml", "NovaClient.qml")
 # Pre-managed installs predate the shader; adoption verifies only these.
 LEGACY_PLUGIN_FILES = ("manifest.json", "BarWidget.qml", "Panel.qml")
 PANEL_IDENTITY_MARKER = 'readonly property string packagedUiIdentity: "__NOVA_PACKAGED_UI_ID__"'
@@ -42,7 +41,8 @@ RUNTIME_FILES = (
     "novad/requested_models.py",
     "novad/onboarding.py",
     "novad/onboarding_integration.py", "novad/server.py", "nova-actions/server.py",
-    "nova-system-tools/server.py", "nova-system-tools/pyproject.toml", "catalog/models.json",
+    "nova-system-tools/server.py", "novad/local_socket.py", "nova-actions/local_socket.py",
+    "nova-system-tools/local_socket.py", "nova-system-tools/pyproject.toml", "catalog/models.json",
     "catalog/evidence.json", "catalog/acquisition_fit.json",
 )
 UNIT_NAMES = ("novad.service", "nova-system-tools.service", "nova-actions.service")
@@ -699,10 +699,17 @@ def parser() -> argparse.ArgumentParser:
     return value
 
 
-def novad_reachable(url: str = "http://127.0.0.1:8790/health") -> bool:
+def novad_reachable() -> bool:
+    """novad answers /health on its socket in the runtime directory (novad/local_socket.py)."""
+    import socket
+    path = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}", "nova", "novad.sock")
     try:
-        with urllib.request.urlopen(url, timeout=1.5) as response: return response.status == 200
-    except (urllib.error.URLError, OSError, ValueError): return False
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+            connection.settimeout(1.5)
+            connection.connect(path)
+            connection.sendall(b"GET /health HTTP/1.1\r\nHost: novad\r\nConnection: close\r\n\r\n")
+            return connection.recv(64).startswith((b"HTTP/1.0 200", b"HTTP/1.1 200"))
+    except OSError: return False
 
 
 def first_install(paths: Paths) -> bool:

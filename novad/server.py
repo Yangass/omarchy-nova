@@ -14,7 +14,8 @@ import time
 import urllib.error
 import urllib.request
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.client import HTTPException
+from http.server import BaseHTTPRequestHandler
 from threading import Event, Lock, Thread
 from pathlib import Path
 from typing import Any, Callable
@@ -30,6 +31,8 @@ from recommendation_integration import (RecommendationRequestError,
                                         load_and_build_recommendations, parse_request)
 from onboarding_integration import collect_onboarding_state
 import catalog_repins
+import local_socket
+from local_socket import OwnerOnlyHTTPServer
 import model_updates
 import requested_models
 from model_removal import RemovalStore, sharing as model_removal_sharing
@@ -40,11 +43,7 @@ from chat_sessions import (BusySessionError, ChatSessionStore,
                            SessionCapacityError, SessionStoreError,
                            Turn as ChatTurn, UnknownSessionError)
 
-HOST = "127.0.0.1"
-PORT = 8790
 OLLAMA_URL = "http://127.0.0.1:11434"
-SYSTEM_TOOLS_URL = "http://127.0.0.1:8787"
-ACTION_URL = "http://127.0.0.1:8791/v1/restart-nova-system-tools"
 ACTION_TOKEN_PATH = Path.home() / ".config" / "nova" / "actions.token"
 MAX_MESSAGE_BYTES = 16_384
 UPSTREAM_TIMEOUT_SECONDS = 180
@@ -566,24 +565,22 @@ def execute_action(action: str, snapshot: dict[str, Any]) -> dict[str, Any]:
     path = ACTION_REGISTRY[action]["path"] if action in ACTION_REGISTRY else UI_ACTION_PATHS.get(action)
     if not path: return {"status":"failure","error":"unknown_action"}
     body = json.dumps({"action":action,"snapshot":snapshot}, separators=(",", ":")).encode()
-    request = urllib.request.Request("http://127.0.0.1:8791" + path, data=body, method="POST", headers={"Authorization":"Bearer " + auth, "Content-Type":"application/json", API_KEY_HEADER: api_key()})
     try:
-        with urllib.request.urlopen(request, timeout=25) as response:
-            data = json.loads(response.read(65_536).decode())
-            return data if isinstance(data, dict) else {"status":"failure","error":"invalid_action_result"}
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError, OSError): return {"status":"failure","error":"action_executor_failed"}
+        _status, raw = local_socket.call("nova-actions", "POST", path, body, {"Authorization":"Bearer " + auth, "Content-Type":"application/json"}, timeout=25)
+        data = json.loads(raw[:65_536].decode())
+        return data if isinstance(data, dict) else {"status":"failure","error":"invalid_action_result"}
+    except (HTTPException, TimeoutError, ValueError, OSError): return {"status":"failure","error":"action_executor_failed"}
 
 # Open CLI (CODE-01B). UI-only: deliberately absent from the chat model's tools.
 CLI_MIN_FREE_BYTES = 16 * 1024**3
 def actions_get(path: str) -> tuple[int, dict[str, Any]]:
     try: auth = ACTION_TOKEN_PATH.read_text().strip()
     except OSError: return 0, {}
-    request = urllib.request.Request("http://127.0.0.1:8791" + path, headers={"Authorization":"Bearer " + auth, API_KEY_HEADER: api_key()})
     try:
-        with urllib.request.urlopen(request, timeout=5) as response:
-            data = json.loads(response.read(65_536).decode())
-            return response.status, data if isinstance(data, dict) else {}
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError, OSError): return 0, {}
+        status, raw = local_socket.call("nova-actions", "GET", path, None, {"Authorization":"Bearer " + auth}, timeout=5)
+        data = json.loads(raw[:65_536].decode())
+        return status, data if isinstance(data, dict) else {}
+    except (HTTPException, TimeoutError, ValueError, OSError): return 0, {}
 
 def resident_models() -> list[str] | None:
     status, payload = upstream_json(OLLAMA_URL + "/api/ps", timeout=2)
@@ -628,8 +625,6 @@ def cli_busy_models(payload: dict[str, Any]) -> list[str]:
 def upstream_json(url: str, *, method: str = "GET", payload: dict[str, Any] | None = None, timeout: int = 3) -> tuple[int, dict[str, Any]]:
     body = json.dumps(payload, separators=(",", ":")).encode() if payload is not None else None
     headers = {"Content-Type": "application/json"} if body else {}
-    # Only NOVA's own system-tools gets the key; Ollama never sees it.
-    if url.startswith(SYSTEM_TOOLS_URL + "/"): headers[API_KEY_HEADER] = api_key()
     request = urllib.request.Request(url, data=body, method=method, headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -641,6 +636,18 @@ def dependency_health(url: str) -> dict[str, Any]:
     status, _ = upstream_json(url, timeout=2)
     return {"reachable": status == HTTPStatus.OK, "http_status": status or None}
 
+def system_tools_json(path: str, timeout: float = 3) -> tuple[int, dict[str, Any]]:
+    """nova-system-tools over its socket (local_socket): (status, JSON object) or (0, {})."""
+    try:
+        status, raw = local_socket.call("nova-system-tools", "GET", path, timeout=timeout)
+        decoded = json.loads(raw[:2_000_000].decode())
+        return status, decoded if isinstance(decoded, dict) else {}
+    except (HTTPException, TimeoutError, ValueError, OSError): return 0, {}
+
+def system_tools_health() -> dict[str, Any]:
+    status, _ = system_tools_json("/health", timeout=2)
+    return {"reachable": status == HTTPStatus.OK, "http_status": status or None}
+
 def tool_result(name: Any, arguments: Any) -> tuple[str, dict[str, Any]]:
     if not isinstance(name, str) or name not in TOOL_REGISTRY: return "unknown_tool", {"ok": False, "error": "unknown_tool"}
     if not isinstance(arguments, dict) or arguments: return name, {"ok": False, "error": "invalid_tool_arguments"}
@@ -649,19 +656,18 @@ def tool_result(name: Any, arguments: Any) -> tuple[str, dict[str, Any]]:
         if len(json.dumps(data).encode()) > MAX_TOOL_RESPONSE_BYTES:
             return name, {"ok": False, "error": "tool_result_too_large", "limit_bytes": MAX_TOOL_RESPONSE_BYTES}
         return name, {"ok": True, "source": "novad", "data": data, "sampling_caveat": "Dynamic samples may include this NOVA request. Estimates use stable capacity; context advice is not applied automatically."}
-    request = urllib.request.Request(SYSTEM_TOOLS_URL + TOOL_REGISTRY[name]["path"], method="GET", headers={API_KEY_HEADER: api_key()})
     try:
-        with urllib.request.urlopen(request, timeout=TOOL_TIMEOUT_SECONDS) as response:
-            raw = response.read(MAX_TOOL_RESPONSE_BYTES + 1)
-            if response.status != HTTPStatus.OK: return name, {"ok": False, "error": "diagnostic_service_unavailable"}
-            if len(raw) > MAX_TOOL_RESPONSE_BYTES: return name, {"ok": False, "error": "tool_result_too_large", "limit_bytes": MAX_TOOL_RESPONSE_BYTES}
-            data = json.loads(raw.decode())
-            if not isinstance(data, dict): return name, {"ok": False, "error": "invalid_tool_response"}
-            result: dict[str, Any] = {"ok": True, "source": "nova-system-tools", "data": data}
-            if name in ("get_gpu_usage", "list_processes"):
-                result["sampling_caveat"] = "This sample can include the active NOVA/Ollama request; do not attribute it to a pre-existing symptom without independent evidence."
-            return name, result
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, UnicodeDecodeError, ValueError, OSError): return name, {"ok": False, "error": "diagnostic_service_unavailable"}
+        status, raw = local_socket.call("nova-system-tools", "GET", TOOL_REGISTRY[name]["path"], timeout=TOOL_TIMEOUT_SECONDS)
+        raw = raw.removesuffix(b"\n")
+        if status != HTTPStatus.OK: return name, {"ok": False, "error": "diagnostic_service_unavailable"}
+        if len(raw) > MAX_TOOL_RESPONSE_BYTES: return name, {"ok": False, "error": "tool_result_too_large", "limit_bytes": MAX_TOOL_RESPONSE_BYTES}
+        data = json.loads(raw.decode())
+        if not isinstance(data, dict): return name, {"ok": False, "error": "invalid_tool_response"}
+        result: dict[str, Any] = {"ok": True, "source": "nova-system-tools", "data": data}
+        if name in ("get_gpu_usage", "list_processes"):
+            result["sampling_caveat"] = "This sample can include the active NOVA/Ollama request; do not attribute it to a pre-existing symptom without independent evidence."
+        return name, result
+    except (HTTPException, TimeoutError, UnicodeDecodeError, ValueError, OSError): return name, {"ok": False, "error": "diagnostic_service_unavailable"}
 
 class OllamaFailure(Exception): pass
 class SelfRestart(Exception): pass
@@ -722,111 +728,22 @@ def run_agent_loop(user_message: str, on_token: Callable[[str], None] | None = N
             messages.append({"role": "tool", "tool_name": tool_name, "content": json.dumps(result, separators=(",", ":"))})
     raise OllamaFailure("Diagnostic tool-call safety limit reached.")
 
-# --- owner-only loopback (identical in novad, nova-actions and nova-system-tools) ---
-# Every local account can connect to 127.0.0.1, so a loopback port alone does not say
-# who is asking (Omarchy marketplace review, 2026-10-10). Before any request is read,
-# the kernel's socket table names the account that owns the client end of the
-# connection; anything but this desktop user, or an answer that is not exactly one
-# account, is refused by closing the connection.
-TCP_TABLES = ("/proc/net/tcp", "/proc/net/tcp6")
-
-
-def _proc_address(text):
-    import ipaddress, sys
-    host, port = text.split(":")
-    raw = bytes.fromhex(host)
-    if sys.byteorder == "little": raw = b"".join(raw[i:i + 4][::-1] for i in range(0, len(raw), 4))
-    address = ipaddress.ip_address(raw)
-    if address.version == 6 and address.ipv4_mapped: address = address.ipv4_mapped
-    return str(address), int(port, 16)
-
-
-def peer_uid(client, server, tables=TCP_TABLES):
-    """UID owning the established connection client -> server, or None unless exactly one."""
-    owners = set()
-    for table in tables:
-        try:
-            with open(table) as file: rows = file.read().splitlines()[1:]
-        except OSError: continue
-        for row in rows:
-            fields = row.split()
-            try:
-                if fields[3] != "01": continue  # ESTABLISHED
-                if _proc_address(fields[1]) == (client[0], client[1]) and _proc_address(fields[2]) == (server[0], server[1]):
-                    owners.add(int(fields[7]))
-            except (IndexError, ValueError): continue
-    return owners.pop() if len(owners) == 1 else None
-
-
-# The desktop user's own web browser passes the UID check, so a web page could still
-# send requests (cross-site request forgery) or pose as 127.0.0.1 (DNS rebinding;
-# review, 2026-10-11). Every request must therefore name this service's loopback Host
-# and, except /health, carry the key from a file only this user can read
-# (~/.config/nova/api.token, 0600). Pages can neither read that file nor add the
-# header to a cross-site request without a preflight, which is never answered.
-API_KEY_PATH = os.path.join(os.path.expanduser("~"), ".config", "nova", "api.token")
-API_KEY_HEADER = "X-Nova-Key"
-OPEN_PATHS = ("/health",)
-
-
-def api_key(path=None):
-    """The shared key, created once (0600) by whichever NOVA service starts first."""
-    import secrets
-    path = path or API_KEY_PATH
-    try:
-        with open(path) as file: value = file.read().strip()
-        if len(value) >= 32: return value
-    except FileNotFoundError: pass
-    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
-    try:
-        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(descriptor, "w") as file: file.write(secrets.token_urlsafe(32) + "\n")
-    except FileExistsError: pass
-    with open(path) as file: value = file.read().strip()
-    if len(value) < 32: raise RuntimeError("NOVA API key unavailable")
-    return value
-
-
-def _guarded(handler):
-    class Guarded(handler):
-        def parse_request(self):
-            from hmac import compare_digest
-            from urllib.parse import urlsplit
-            if not super().parse_request(): return False
-            port = self.server.server_address[1]
-            if self.headers.get("Host") not in (f"127.0.0.1:{port}", f"localhost:{port}"):
-                self.send_error(403, "Unexpected Host"); return False
-            if urlsplit(self.path).path not in OPEN_PATHS and not compare_digest(
-                    (self.headers.get(API_KEY_HEADER) or "").encode(), api_key().encode()):
-                self.send_error(401, "NOVA key required"); return False
-            return True
-    Guarded.__name__ = Guarded.__qualname__ = handler.__name__
-    return Guarded
-
-
-class OwnerOnlyHTTPServer(ThreadingHTTPServer):
-    daemon_threads = True
-
-    def __init__(self, address, handler):
-        api_key()  # create the key before the first request
-        super().__init__(address, _guarded(handler))
-
-    def verify_request(self, request, client_address):
-        return peer_uid(client_address, self.server_address[:2]) == os.getuid()
-# --- end owner-only loopback ---
+# Who may talk to novad, and to whom novad talks: local_socket.py (Unix sockets in this
+# user's runtime directory; Ollama's loopback port checked for its owner).
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "novad/0.14.7"
+    server_version = "novad/0.14.8"
     def log_message(self, _format: str, *_args: Any) -> None: return
     def send_json(self, status: HTTPStatus, payload: dict[str, Any]) -> bool:
-        body = json.dumps(payload, separators=(",", ":")).encode()
+        # Ends with a newline: the panel reads the socket line by line (BarWidget.novaRequest).
+        body = json.dumps(payload, separators=(",", ":")).encode() + b"\n"
         try:
             self.send_response(status); self.send_header("Content-Type", "application/json; charset=utf-8"); self.send_header("Content-Length", str(len(body))); self.send_header("Cache-Control", "no-store"); self.send_header("X-Content-Type-Options", "nosniff"); self.end_headers(); self.wfile.write(body); self.wfile.flush(); return True
         except OSError: return False
     def send_sse_headers(self) -> bool:
         try:
-            self.send_response(HTTPStatus.OK); self.send_header("Content-Type", "text/event-stream; charset=utf-8"); self.send_header("Cache-Control", "no-store"); self.send_header("X-Content-Type-Options", "nosniff"); self.send_header("Connection", "keep-alive"); self.end_headers(); return True
+            self.send_response(HTTPStatus.OK); self.send_header("Content-Type", "text/event-stream; charset=utf-8"); self.send_header("Cache-Control", "no-store"); self.send_header("X-Content-Type-Options", "nosniff"); self.end_headers(); return True
         except OSError: return False
     def send_sse(self, event: str, payload: dict[str, Any]) -> None:
         self.wfile.write(f"event: {event}\ndata: {json.dumps(payload, separators=(',', ':'))}\n\n".encode()); self.wfile.flush()
@@ -907,7 +824,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(HTTPStatus.OK, local_onboarding_state())
             return
         if parsed.query: self.send_json(HTTPStatus.BAD_REQUEST, {"error": "Query parameters are not accepted."}); return
-        if self.path == "/health": self.send_json(HTTPStatus.OK, {"status": "ok", "timestamp": utc_now(), "loopback_only": True, "ollama": dependency_health(OLLAMA_URL + "/api/tags"), "system_tools": dependency_health(SYSTEM_TOOLS_URL + "/health"), "selection_state":"selected" if has_active_selection() else "none", "active_provider":ACTIVE_PROVIDER, "active_model":ACTIVE_MODEL})
+        if self.path == "/health": self.send_json(HTTPStatus.OK, {"status": "ok", "timestamp": utc_now(), "local_only": True, "ollama": dependency_health(OLLAMA_URL + "/api/tags"), "system_tools": system_tools_health(), "selection_state":"selected" if has_active_selection() else "none", "active_provider":ACTIVE_PROVIDER, "active_model":ACTIVE_MODEL})
         elif self.path == "/models/updates": self.send_json(HTTPStatus.OK, model_updates_view())
         elif self.path in ("/catalog/models", "/catalog/status"):
             self.send_json(HTTPStatus.OK, catalog_view(include_models=self.path == "/catalog/models"))
@@ -951,7 +868,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(HTTPStatus.OK,payload)
             except ProviderUnavailable: self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"error":"provider_unavailable", "active_provider":ACTIVE_PROVIDER, "active_model":ACTIVE_MODEL})
         elif telemetry_path := TELEMETRY_ROUTES.get(self.path):
-            status, payload = upstream_json(SYSTEM_TOOLS_URL + telemetry_path)
+            status, payload = system_tools_json(telemetry_path)
             if status != HTTPStatus.OK: self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "System tools are unavailable."}); return
             self.send_json(HTTPStatus.OK, payload)
         else: self.send_json(HTTPStatus.NOT_FOUND, {"error": "Unknown endpoint."})
@@ -1202,5 +1119,7 @@ def private_state_dirs(home: Path | None = None) -> list[str]:
 if __name__ == "__main__":
     private_state_dirs()
     acquisition_store()  # Reconcile durable state before accepting requests.
-    print(f"novad listening on http://{HOST}:{PORT}", flush=True)
-    OwnerOnlyHTTPServer((HOST, PORT), Handler).serve_forever()
+    local_socket.check_loopback_peers()  # Ollama's port: only its owner gets NOVA's requests
+    server = OwnerOnlyHTTPServer("novad", Handler)
+    print(f"novad listening on {server.server_address}", flush=True)
+    server.serve_forever()

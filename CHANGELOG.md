@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.14.8
+
+- **Security fix (marketplace review):** NOVA's helpers no longer use network ports
+  (`127.0.0.1:8790`, `8787`, `8791`). Up to 0.14.7, the top bar checked on NOVA every few
+  seconds, even while NOVA was off, and sent its private key to whatever was listening
+  on NOVA's port. Another account on the same computer could have taken that port while
+  NOVA was stopped and received the key. Now the helpers listen only on Unix sockets in
+  your private runtime folder (`$XDG_RUNTIME_DIR/nova`), which no other account can
+  open, and both ends check with the kernel who is on the other side. So nobody else can
+  answer in NOVA's place, and there is no key any more: the old key file
+  (`~/.config/nova/api.token`) is removed. The same rule now covers Ollama: NOVA sends a
+  request (your chat messages included) to `127.0.0.1:11434` only if the kernel says the
+  answering end belongs to Ollama's service account, root or you. Thanks again to
+  HANCORE-linux.
+
 ## 0.14.7
 
 - **Security fix (marketplace review follow-up):** in 0.14.6 a text box still became a

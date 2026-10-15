@@ -6,7 +6,7 @@ Only fixture approval IDs reach the temporary loopback listener. No production
 API, model, configuration, or service operation is available to this check.
 Requires a running Wayland desktop; it briefly displays the marked preview.
 """
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 import json
 from pathlib import Path
 import subprocess
@@ -14,10 +14,12 @@ import tempfile
 from threading import Thread
 import time
 
+import fake_nova
 import onboarding_preview as preview
 
 
 QML_CHECK = r'''
+  NovaClient { id: fakeNova; socketPath: "@SOCKET@" }
   TestCase {
     id: approvalCheck
     name: "IsolatedApprovalInteraction"
@@ -70,7 +72,7 @@ QML_CHECK = r'''
       }
       // The host starts isolated so fixture application/open cannot call HTTP.
       // Switch only this temporary host to the stub to exercise production XHR.
-      previewHost.api = @STUB_API@
+      previewHost.novaClient = fakeNova
       previewHost.acceptancePreview = false
       novaPanel.panelView = "models"
       // UX Phase 2: whatever view is open, an approval shows in CHAT (core band above it).
@@ -272,7 +274,7 @@ def main():
             self.end_headers()
             self.wfile.write(json.dumps({"error": "fixture_rejected"}).encode())
 
-    with ThreadingHTTPServer(("127.0.0.1", 0), Stub) as server:
+    with fake_nova.server(Stub) as server:
         thread = Thread(target=server.serve_forever, daemon=True)
         thread.start()
         with tempfile.TemporaryDirectory(prefix="nova-approval-check-", dir="/tmp") as raw:
@@ -282,7 +284,7 @@ def main():
             fixture["chat_expanded"] = False
             shell_file = preview.prepare_config(target, fixture)
             text = shell_file.read_text().replace("import QtQuick\n", "import QtQuick\nimport QtTest\n", 1)
-            check = QML_CHECK.replace("@STUB_API@", json.dumps(f"http://127.0.0.1:{server.server_port}"))
+            check = QML_CHECK.replace("@SOCKET@", server.server_address)
             # Keep a persistent fixture banner even while testing production XHR.
             text = text.replace('property bool acceptancePreview: true', 'property bool acceptancePreview: true')
             text = text.rsplit("\n}", 1)[0] + check + "\n}\n"

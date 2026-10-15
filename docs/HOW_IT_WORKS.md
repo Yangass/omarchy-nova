@@ -3,13 +3,13 @@
 ## The pieces
 
 ```
- Omarchy bar ── NOVA panel (Panel.qml, QML in the Omarchy shell)
-                    │  HTTP, 127.0.0.1 only
+ Omarchy bar ── NOVA panel (Panel.qml, BarWidget.qml, NovaClient.qml in the Omarchy shell)
+                    │  HTTP over a Unix socket in $XDG_RUNTIME_DIR/nova (yours only)
                     ▼
-               novad :8790 ──────────► Ollama :11434   (chat, models, downloads)
+               novad (novad.sock) ───► Ollama 127.0.0.1:11434 (chat, models, downloads; owner checked)
                  │        └──────────► Ollama library  (model size + exact version, when you install)
-                 ├─► nova-system-tools :8787   read-only telemetry (CPU, memory, GPU, disk, network)
-                 └─► nova-actions :8791        a fixed list of approved actions, token-protected
+                 ├─► nova-system-tools (system-tools.sock)   read-only telemetry (CPU, memory, GPU, disk, network)
+                 └─► nova-actions (actions.sock)             a fixed list of approved actions, token-protected
 ```
 
 - **Panel** (`Panel.qml`, `BarWidget.qml`): everything you see. It holds no secrets
@@ -72,20 +72,31 @@ expire, and each new action needs a new approval.
 
 ## Only your account
 
-Any account on a computer can connect to `127.0.0.1`, so a loopback port alone doesn't
-say who is asking. All three helpers accept a connection only after the kernel's socket
-table (`/proc/net/tcp`) shows that its client end belongs to the user they run as;
-anything else, including an unclear answer, closes the connection before a request is
-read.
+The helpers don't listen on network ports. Each one listens on a Unix socket in
+`$XDG_RUNTIME_DIR/nova` (`novad.sock`, `system-tools.sock`, `actions.sock`; mode 0600,
+in a 0700 folder inside your runtime folder, which systemd makes yours alone). The code
+is in `novad/local_socket.py`, the same file in all three helpers.
 
-Your own web browser runs as you, so that check alone would let a web page send
-requests to NOVA. Every request therefore also has to be addressed to `127.0.0.1` or
-`localhost` on the helper's own port (which stops DNS rebinding) and carry a key from
-`~/.config/nova/api.token` (mode 0600, created by the helpers). NOVA's panel reads the
-file and sends the key as a header; a web page can neither read the file nor add that
-header to a cross-site request. Only `/health` answers without the key, and it says no
-more than "ok". nova-actions also requires its own key (`~/.config/nova/actions.token`). Thanks to the Omarchy marketplace review for
-spotting that earlier versions trusted any local caller, then any page in your browser.
+- **Who can connect:** only processes of your account can open that folder. On top of
+  that, every helper asks the kernel which account is on the other end of each
+  connection (`SO_PEERCRED`) and closes it unless it's you.
+- **Who can answer:** a network port can be taken by any account while the program that
+  normally holds it is stopped. A socket in your runtime folder can only be created by
+  you. Every caller (the panel through `NovaClient.qml`, the helpers when they call each
+  other) also checks with the kernel that the answering end is your account before it
+  writes anything.
+- **Web pages:** a browser can't open a Unix socket, so cross-site request forgery and
+  DNS rebinding are not possible, and NOVA needs no key for them.
+- **Ollama** listens on `127.0.0.1:11434` like any Ollama install. After connecting and
+  before writing a request, novad looks up the answering end of the connection in the
+  kernel's socket table (`/proc/net/tcp`) and continues only if it belongs to Ollama's
+  service account (`ollama`), root or you. Otherwise, for example when another account
+  holds the port while Ollama is stopped, nothing is sent.
+
+nova-actions also requires its own key (`~/.config/nova/actions.token`), which only
+novad sends, over nova-actions' socket. Thanks to the Omarchy marketplace review for
+spotting that earlier versions trusted any local caller, then any page in your browser,
+and then sent a key to whatever held NOVA's port while NOVA was off.
 
 ## Files NOVA keeps
 

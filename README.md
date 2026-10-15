@@ -98,11 +98,10 @@ Your chats and files stay on your computer. NOVA uses the internet only to:
 
 No account, no telemetry. And on your computer:
 
-- **Only you.** NOVA's helpers listen only on your own computer (`127.0.0.1`) and serve
-  only your user account: on every connection they ask the Linux kernel who is
-  connecting and refuse anyone else, including other accounts on the same PC. Every
-  request also needs a private key that only NOVA's panel sends, so a web page open in
-  your browser can't drive NOVA either.
+- **Only you.** NOVA's helpers use no network ports. They listen only in your private
+  runtime folder, which no other account on the PC can open, and on every connection
+  they ask the Linux kernel who is on the other side. Nobody else can reach them or
+  answer in their place, and a web page open in your browser can't reach them at all.
 - **No root.** NOVA runs as you. The only password prompt is the one-time Ollama install.
 - **You approve every change.** The chat model can suggest an action; only your click on
   **Approve** runs it, once, before the approval expires.

@@ -13,6 +13,7 @@ from unittest.mock import patch
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
+VERSION = json.loads((ROOT / "manifest.json").read_text())["version"]  # the release under test
 TOOL = ROOT / "tools/nova_install.py"
 spec = importlib.util.spec_from_file_location("nova_install", TOOL)
 install = importlib.util.module_from_spec(spec); assert spec and spec.loader
@@ -96,7 +97,7 @@ class InstallerTests(unittest.TestCase):
         first = app._stage_plugin()
         self.assertIsNotNone(first)
         first_panel = (first / "Panel.qml").read_text()
-        self.assertIn('packagedUiIdentity: "v0.14.7 · ui-', first_panel)
+        self.assertIn(f'packagedUiIdentity: "v{VERSION} · ui-', first_panel)
         self.assertNotIn(install.PANEL_IDENTITY_MARKER, first_panel)
         repeat = app._stage_plugin()
         self.assertEqual(first_panel, (repeat / "Panel.qml").read_text())
@@ -111,7 +112,7 @@ class InstallerTests(unittest.TestCase):
         self.mutate("setup", app)
         installed = self.home / ".config/omarchy/plugins" / install.PLUGIN_ID / "Panel.qml"
         original = installed.read_bytes()
-        self.assertIn(b'packagedUiIdentity: "v0.14.7', original)
+        self.assertIn(f'packagedUiIdentity: "v{VERSION}'.encode(), original)
         (self.source / "Panel.qml").write_text((self.source / "Panel.qml").read_text() + "\n// next UI\n")
         failing = self.app(ops=MockOps(fail=("start", "novad.service")))
         with self.assertRaises(RuntimeError): self.mutate("update", failing)

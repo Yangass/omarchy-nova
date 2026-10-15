@@ -22,7 +22,7 @@ class ChatSessionUiContractTests(unittest.TestCase):
         start = section("function startChatRequest", "function sendChat()")
         create = section("function createChatSession", "function contextLossConfirmed")
         self.assertIn('if (!chatSessionId) createChatSession(message, true)', send)
-        self.assertIn('root.openNova(xhr, "POST", chatApiBase() + "/chat/sessions")', create)
+        self.assertIn('root.openNova(xhr, "POST", "/chat/sessions")', create)
         self.assertIn('session_id: requestSessionId', start)
         self.assertNotIn('JSON.stringify({ message: message })', start)
 
@@ -87,7 +87,7 @@ class ChatSessionUiContractTests(unittest.TestCase):
 
     def test_reset_uses_the_existing_reset_api_with_stale_guards(self):
         reset = section("function startChatReset", "function open()")
-        self.assertIn('root.openNova(xhr, "POST", chatApiBase() + "/chat/sessions/" + encodeURIComponent(targetSessionId) + "/reset")', reset)
+        self.assertIn('root.openNova(xhr, "POST", "/chat/sessions/" + encodeURIComponent(targetSessionId) + "/reset")', reset)
         self.assertIn("if (acceptancePreview || chatResetInFlight || chatBusy || chatContextOperationActive", reset)
         self.assertIn("resetSerial !== chatResetSerial", reset)
         self.assertIn("targetGeneration !== chatSessionGeneration", reset)

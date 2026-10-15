@@ -5,12 +5,17 @@ apps, so it is built to do that only for you and only after you approve.
 
 ## What NOVA protects against
 
-- **Other accounts on the same computer.** NOVA's helpers listen only on `127.0.0.1`
-  and refuse any connection the Linux kernel doesn't attribute to your account.
-- **Web pages in your browser.** Every request must carry a private key from
-  `~/.config/nova/api.token` (readable only by you, sent only by NOVA's panel) and be
-  addressed to `127.0.0.1` or `localhost`. That blocks cross-site request forgery and
-  DNS rebinding. NOVA sends no CORS headers.
+- **Other accounts on the same computer.** NOVA's helpers don't use network ports. They
+  listen only on Unix sockets in your private runtime folder (`$XDG_RUNTIME_DIR/nova`),
+  which no other account can open. So another account can't reach them, and can't pose
+  as them either, even while NOVA is off. Both ends also ask the Linux kernel which
+  account is on the other side, on every connection.
+- **A stand-in for Ollama.** Ollama listens on `127.0.0.1:11434`. Before NOVA sends it
+  anything (your chat messages included), the kernel must confirm that the answering end
+  belongs to Ollama's service account, root or you. Another account listening on that
+  port while Ollama is stopped gets nothing.
+- **Web pages in your browser.** A browser can't open a Unix socket, so no web page can
+  send NOVA a request. NOVA sends no CORS headers, and there is no key to steal.
 - **The chat model.** It can suggest an action but never approve one. Every change
   (downloads, updates, deletions, restarts, ending a process, opening an app) waits for
   your click on an approval card, once, before it expires. Model answers are escaped

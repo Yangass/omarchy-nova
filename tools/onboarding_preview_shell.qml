@@ -26,8 +26,9 @@ ShellRoot {
     id: previewHost
     property bool acceptancePreview: true
     property var acceptancePreviewFixture: shell.fixture
-    property string api: "fixture://no-production-api"
-    property string apiKey: ""
+    // No NOVA behind the preview: the panel's requests fail like an offline NOVA. A check
+    // can set a NovaClient here that points at its own fake novad socket.
+    property var novaClient: null
     property bool online: shell.fixture.host.online === true
     property real cpu: 18
     property real memory: 42
