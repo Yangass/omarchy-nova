@@ -177,15 +177,18 @@ Ui.Panel {
   // added back as tags NOVA writes itself. Qt's own Markdown mode fetched image URLs from
   // the text and rendered raw HTML, so it is not used: images show their alt text, links
   // show as text with the address, and nothing is fetched or clickable.
+  // Linear time (audit 2026-10-16): no pattern scans past the next opener of its own kind
+  // (bold stops at the next "**", a link at the next "[" or "("), so text full of openers
+  // that never close costs no more than plain text.
   function chatMarkdownHtml(source) {
     function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;") }
     var codeColor = String(root.accent), mutedColor = String(root.muted)
     function inline(s) {
       var codes = []
       s = s.replace(/`([^`]+)`/g, function(m, c) { codes.push(c); return "\u0001" + (codes.length - 1) + "\u0001" })
-      s = s.replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
-      s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, "$1 ($2)")
-      s = s.replace(/\*\*(?=\S)(.+?\S)\*\*/g, "<b>$1</b>").replace(/__(?=\S)(.+?\S)__/g, "<b>$1</b>")
+      s = s.replace(/!\[([^\[\]]*)\]\([^()]*\)/g, "$1")
+      s = s.replace(/\[([^\[\]]+)\]\(([^()\s]+)\)/g, "$1 ($2)")
+      s = s.replace(/\*\*(?=\S)((?:[^*]|\*(?!\*))*?\S)\*\*/g, "<b>$1</b>").replace(/__(?=\S)((?:[^_]|_(?!_))*?\S)__/g, "<b>$1</b>")
       s = s.replace(/(^|[^*\w])\*(?=\S)([^*]*?\S)\*(?![*\w])/g, "$1<i>$2</i>")
       return s.replace(/\u0001(\d+)\u0001/g, function(m, i) { return "<span style=\"color:" + codeColor + "\">" + codes[Number(i)] + "</span>" })
     }
@@ -2513,12 +2516,18 @@ Ui.Panel {
   }
   function cliRunning(item) { return cliProfilesFor(item).some(function(profile) { return profile.running === true }) }
   // OPEN CLI is launchable when any project for the model can open; the card's LAUNCH
-  // when the chosen one can.
-  function cliCanLaunch(item) { return !cliRequesting && cliProfilesFor(item).some(function(profile) { return profile.available === true }) }
-  function cliChosenCanLaunch(item) { var profile = cliProfileFor(item); return !!profile && profile.available === true && !cliRequesting }
+  // when the chosen one can. A local CLI also waits for a model load NOVA is running: the
+  // panel knows at once, novad's state says so within one refresh.
+  function cliWaitsForLoad(item) { return !!item && item.provider !== "online" && modelTransitionActive }
+  function cliCanLaunch(item) { return !cliRequesting && !cliWaitsForLoad(item) && cliProfilesFor(item).some(function(profile) { return profile.available === true }) }
+  function cliChosenCanLaunch(item) { var profile = cliProfileFor(item); return !!profile && profile.available === true && !cliRequesting && !cliWaitsForLoad(item) }
   function cliUnavailableReason(item) {
+    if (cliWaitsForLoad(item)) return cliReasonFor({ blocked: "model_loading" })
     if (!cliState) return "Coding CLI availability is unknown: NOVA's action service did not answer."
     var profile = cliProfileFor(item)
+    // Name the button that loads it (LOAD AND VERIFY when it is already NOVA's model).
+    if (profile && profile.blocked === "model_not_loaded" && item.provider === "ollama")
+      return "Please load the model first: " + (installedModelSelected(item) ? "LOAD AND VERIFY" : "LOAD AND USE") + " puts it in GPU memory, then OPEN CLI opens."
     if (!profile) {
       var configured = cliState.profiles.filter(function(p) { return p && p.valid === true && p.kind !== "online" }).map(function(p) { return p.model })
       if (cliState.error === "invalid_profile_file") return "The coding CLI profile file is invalid; no CLI can be opened."
@@ -2533,6 +2542,9 @@ Ui.Panel {
     var other = cliRunningProjectLabel()
     var reasons = {
       cli_session_active: "A coding CLI session is already running.",
+      model_not_loaded: "Please load the model first: its LOAD button puts it in GPU memory, then the CLI opens.",
+      model_loading: "NOVA is loading the model. OPEN CLI opens once it is in GPU memory.",
+      nova_busy: "NOVA is busy (answering in chat or running an action). OPEN CLI opens when it is done.",
       other_cli_session_active: (other ? "The coding CLI for " + other + " is open." : "A Qwen coding CLI is already open.") + " NOVA opens one at a time; close it first.",
       conflicting_resident_model: "Blocked: " + (profile.conflicting_models || []).join(", ") + " is loaded in GPU memory. The CLI worker needs the GPU to itself.",
       provider_unavailable: "Ollama is not reachable, so the model cannot be checked.",
@@ -3726,6 +3738,22 @@ Ui.Panel {
     property string responseStatus: "complete"
     property bool streaming: false
     property bool copied: false
+    // What the answer box shows. While an answer streams in, it catches up with `text` at
+    // most every 80 ms (audit 2026-10-16): formatting and laying out the whole answer on
+    // every token kept the shared shell busy on long answers. A finished answer shows at once.
+    property string shownText: ""
+    Component.onCompleted: shownText = text
+    onTextChanged: {
+      if (streaming && shownTextTimer.running) return
+      shownText = text
+      if (streaming) shownTextTimer.start()
+    }
+    onStreamingChanged: if (!streaming) { shownTextTimer.stop(); shownText = text }
+    Timer {
+      id: shownTextTimer
+      interval: 80
+      onTriggered: if (chatLine.shownText !== chatLine.text) { chatLine.shownText = chatLine.text; restart() }
+    }
     width: parent ? parent.width : implicitWidth
     readonly property bool hasSources: role === "assistant" && Array.isArray(sources) && sources.length > 0
     readonly property bool canCopy: role === "assistant" && !streaming && text.length > 0
@@ -3825,7 +3853,7 @@ Ui.Panel {
       anchors.topMargin: header.height + (chatLine.hasSources ? sourceLabel.implicitHeight + Style.spacing.xxs : 0) + Style.spacing.xs
       width: parent.width
       height: contentHeight
-      text: chatLine.role === "assistant" ? root.chatMarkdownHtml(chatLine.text) : chatLine.text
+      text: chatLine.role === "assistant" ? root.chatMarkdownHtml(chatLine.shownText) : chatLine.shownText
       readOnly: true
       selectByMouse: true
       persistentSelection: true

@@ -273,6 +273,28 @@ QML_CHECK = r'''
         check(hostile.indexOf("<img") < 0 && hostile.indexOf("<script") < 0 && hostile.indexOf("<a ") < 0 && hostile.indexOf("<b>raw") < 0, "tags leaked: " + hostile)
         check(hostile.indexOf("&lt;b&gt;raw&lt;/b&gt;") === 0 && hostile.indexOf(" pic ") > 0 && hostile.indexOf("site (http://127.0.0.1:1/l)") > 0 && hostile.indexOf("&amp; done") > 0, "shown as text: " + hostile)
       })
+      test("chat answers: text full of openers formats fast; a streaming answer redraws at most every 80 ms", function() {
+        // Audit 2026-10-16: these took 90-130 ms each at 30 KB, and the answer was redrawn on every token.
+        var html = novaPanel.chatMarkdownHtml
+        ;["**a ", "__a ", "[a](", "![a](", "**a *", "[a](b "].forEach(function(unit) {
+          var text = unit.repeat(Math.ceil(30000 / unit.length)), started = Date.now()
+          html(text)
+          check(Date.now() - started < 50, JSON.stringify(unit) + " x 30 KB took " + (Date.now() - started) + " ms")
+        })
+        novaPanel.chatBusy = true
+        novaPanel.addChat("assistant", "", [], "streaming")
+        var lines = findChild(novaPanel, "chatHistoryRepeater"), line = lines.itemAt(lines.count - 1)
+        novaPanel.appendAssistantText("one")
+        check(line.shownText === "one", "the first token waits: " + line.shownText)
+        for (var i = 0; i < 50; i++) novaPanel.appendAssistantText(" more")
+        check(line.shownText === "one", "redrawn on every token: " + line.shownText.length)
+        wait(250)
+        check(line.text.length === 253 && line.shownText === line.text, "didn't catch up: " + line.shownText.length)
+        novaPanel.appendAssistantText(" a"); novaPanel.appendAssistantText(" b")
+        check(line.shownText !== line.text, "redrawn twice within 80 ms")
+        novaPanel.chatBusy = false
+        check(line.shownText === line.text, "a finished answer waits")
+      })
       test("catalog upkeep: VERSIONS dates the model list and nudges after 60 days", function() {
         var saved = novaPanel.catalogModels
         novaPanel.catalogModels = [{catalog_id: "a", metadata: {checked_at: "2026-09-08T12:21:36Z"}},

@@ -81,7 +81,8 @@ class Handler(BaseHTTPRequestHandler):
             item = {"available": profile(),
                     "running": profile(running=True, available=False, blocked="cli_session_active"),
                     "conflict": profile(available=False, blocked="conflicting_resident_model",
-                                        conflicting_models=["qwen3:14b"])}[mode]
+                                        conflicting_models=["qwen3:14b"]),
+                    "not-loaded": profile(available=False, blocked="model_not_loaded")}[mode]
             self.reply(200, {"configured": True, "error": None, "profiles": [item], "checked_at": "fixture"})
         else:
             self.reply(503, {"error": "fixture_unavailable"})
@@ -255,6 +256,29 @@ QML_CHECK = r'''
         profiles("conflict"); click(child(0, "openCliButton"))
         check(child(0, "cliStatusText").text.indexOf("Blocked: qwen3:14b is loaded in GPU memory") === 0, "conflict reason wrong")
         capture("conflict-reason")
+      })
+      test("until the model is loaded OPEN CLI is greyed and says to load it first", function() {
+        // Konstantin 2026-10-16: it opened a terminal that closed at once, with no message.
+        get("/__requests__/reset"); profiles("not-loaded")
+        var button = child(0, "openCliButton"), reason = "Please load the model first: LOAD AND USE puts it in GPU memory, then OPEN CLI opens."
+        check(button.visible && button.text === "OPEN CLI" && !button.launchable && button.opacity < 1, "not greyed: " + button.opacity)
+        check(button.tooltipText === reason, "tooltip: " + button.tooltipText)
+        click(button)
+        check(child(0, "cliStatusText").text === reason, "reason: " + child(0, "cliStatusText").text)
+        check(!child(0, "cliConfirmCard").visible && get("/__requests__").launch.length === 0, "launched before the model was loaded")
+        capture("load-first")
+        profiles("available"); wait(100)
+        check(child(0, "openCliButton").launchable && !child(0, "cliStatusText").visible, "loaded model still greyed or reason kept")
+      })
+      test("a load NOVA is running greys OPEN CLI at once, before the next refresh", function() {
+        profiles("available"); novaPanel.modelSwitching = true; wait(30)
+        var button = child(0, "openCliButton")
+        check(!button.launchable && button.tooltipText === "NOVA is loading the model. OPEN CLI opens once it is in GPU memory.", "tooltip: " + button.tooltipText)
+        click(button)
+        check(!child(0, "cliConfirmCard").visible && get("/__requests__").launch.length === 0, "launched during a load")
+        novaPanel.modelSwitching = false; wait(30)
+        check(child(0, "openCliButton").launchable, "still greyed after the load")
+        novaPanel.cliStatus = ""
       })
       test("executor failure is shown as failure", function() {
         profiles("available"); get("/__launch__/failure")

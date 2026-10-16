@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.14.11
+
+- **OPEN CLI waits for its model.** A local coding CLI opens on a model that is already
+  in GPU memory. Until it is, and while NOVA is loading it, OPEN CLI is greyed out and its
+  tooltip says to load the model first. Before, a terminal opened and closed at once
+  without a word. If the CLI still can't start, its window now stays open with the reason
+  until you press Enter.
+
+## 0.14.10
+
+- **Security hardening (NOVA's own review):** a chat answer can no longer slow down the
+  shell. Formatting a long answer full of unclosed `**`, `[` or `![` took up to a tenth
+  of a second, and NOVA did it again for every word as the answer streamed in, so such
+  an answer could keep the top bar and panels busy for minutes. Formatting now takes
+  about the same time as for plain text, and a streaming answer is redrawn at most every
+  80 ms (a finished one at once).
+- **Security hardening (NOVA's own review):** OPEN CLI reads a coding agent's project
+  only as small regular files. A link out of the project, a pipe or a huge file left
+  there by the agent can't stall NOVA's action helper or fill its memory.
+
 ## 0.14.9
 
 - **Security fix (marketplace review):** text NOVA shows is always shown as plain text.

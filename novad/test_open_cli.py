@@ -1,10 +1,12 @@
 """CODE-01B Open CLI: profile validation, fixed launch command and panel-facing state."""
 from __future__ import annotations
 import importlib.util
+import io
 import json
 import os
 import sys
 import tempfile
+import threading
 from pathlib import Path
 from unittest.mock import patch
 import unittest
@@ -208,6 +210,30 @@ class ProjectSyncTests(ProfileFixture):
             self.sync()
         self.assertTrue(calls and all(str(self.checkout) not in " ".join(map(str, c)) for c in calls))
 
+    def test_odd_files_in_the_agents_git_are_unknown_and_never_block(self):
+        """Audit 2026-10-16: the agent can write its .git. A symlink out of it, a huge
+        packed-refs or a FIFO must give "unknown" at once, not wait or fill memory."""
+        git_dir = self.checkout / ".git"
+        self.assertEqual(self.sync(), "up_to_date")
+        moved = self.root / "elsewhere.git"; git_dir.rename(moved); git_dir.symlink_to(moved)
+        self.assertEqual(self.sync(), "unknown")
+        git_dir.unlink(); moved.rename(git_dir)
+        head, outside = git_dir / "HEAD", self.root / "outside"
+        outside.write_text(self.second + "\n"); head.unlink(); head.symlink_to(outside)
+        self.assertEqual(self.sync(), "unknown")
+        head.unlink(); head.write_text("ref: refs/heads/qwen-development\n")
+        (git_dir / "refs/heads/qwen-development").unlink()
+        (git_dir / "packed-refs").write_text(("0" * 40 + " refs/heads/padding\n") * 30_000
+                                             + self.second + " refs/heads/qwen-development\n")
+        self.assertEqual(self.sync(), "unknown")
+        (git_dir / "packed-refs").write_text(self.second + " refs/heads/qwen-development\n")
+        self.assertEqual(self.sync(), "up_to_date")
+        head.unlink(); os.mkfifo(head)
+        result = []
+        worker = threading.Thread(target=lambda: result.append(self.sync()), daemon=True)
+        worker.start(); worker.join(5)
+        self.assertEqual(result, ["unknown"], "blocked on a FIFO")
+
 
 class ProjectIdentityTests(ProfileFixture):
     """2026-10-12: a Pulsar project (repo ~/pulsar, branch main) must not be compared with NOVA's master."""
@@ -405,11 +431,49 @@ class NovadStateTests(unittest.TestCase):
         value = {"id": "qwen-nova-dev", "model": MODEL, "valid": True, "error": None, "running": False}
         value.update(changes); return value
 
-    def test_available_when_nothing_or_same_model_resident(self):
-        for resident in ([], [MODEL]):
-            status, payload = self.state([self.item()], resident)
-            self.assertEqual(status, 200)
-            self.assertEqual((payload["profiles"][0]["available"], payload["profiles"][0]["blocked"]), (True, None))
+    def test_available_only_once_its_model_is_in_gpu_memory(self):
+        # Konstantin 2026-10-16: OPEN CLI greyed out until the model is loaded in NOVA.
+        status, payload = self.state([self.item()], [MODEL])
+        self.assertEqual(status, 200)
+        self.assertEqual((payload["profiles"][0]["available"], payload["profiles"][0]["blocked"]), (True, None))
+        _, payload = self.state([self.item()], [])
+        self.assertEqual((payload["profiles"][0]["available"], payload["profiles"][0]["blocked"]), (False, "model_not_loaded"))
+
+    def test_a_busy_nova_blocks_local_profiles_only(self):
+        # The launcher's preflight refuses unless NOVA is idle; its window then closed unread.
+        for state, blocked in (("model_switching", "model_loading"), ("tool_call", "nova_busy"),
+                               ("approval_required", "nova_busy"), ("idle", None)):
+            with patch.object(novad.RUNTIME, "snapshot", return_value={"state": state}):
+                _, payload = self.state([self.item(), self.online_item()], [MODEL])
+            self.assertEqual([p["blocked"] for p in payload["profiles"]], [blocked, None], state)
+        # A conflicting model while NOVA loads: the load is what to wait for.
+        with patch.object(novad.RUNTIME, "snapshot", return_value={"state": "model_switching"}):
+            _, payload = self.state([self.item()], ["qwen3:14b"])
+        self.assertEqual(payload["profiles"][0]["blocked"], "model_loading")
+
+    def launch(self, profiles):
+        handler = object.__new__(novad.Handler)
+        body = json.dumps({"profile_id": "qwen-nova-dev", "model": MODEL}).encode()
+        handler.path, handler.command = "/cli/launch", "POST"
+        handler.headers = {"Content-Length": str(len(body))}
+        handler.rfile, handler.wfile = io.BytesIO(body), io.BytesIO()
+        answer = []
+        handler.send_json = lambda status, payload: answer.append((status, payload)) or True
+        handler.empty_request_body = lambda: False
+        calls = []
+        with patch.object(novad, "cli_profiles_state", return_value=(200, {"profiles": profiles})), \
+             patch.object(novad, "execute_action", side_effect=lambda *a: calls.append(a) or {"status": "dispatched"}), \
+             patch.object(novad, "audit"):
+            novad.Handler.do_POST(handler)
+        return answer[0], calls
+
+    def test_launch_is_refused_while_blocked_and_never_dispatched(self):
+        blocked = dict(self.item(), available=False, blocked="model_not_loaded")
+        (status, payload), calls = self.launch([blocked])
+        self.assertEqual((status, payload), (409, {"status": "blocked", "error": "model_not_loaded"}))
+        self.assertEqual(calls, [])
+        (status, payload), calls = self.launch([dict(self.item(), available=True, blocked=None)])
+        self.assertEqual((status, payload["status"], len(calls)), (200, "dispatched", 1))
 
     def test_blocked_reasons(self):
         cases = [(self.item(), ["qwen3:14b"], 200 * 1024**3, "conflicting_resident_model"),

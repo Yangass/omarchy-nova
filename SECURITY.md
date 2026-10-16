@@ -19,7 +19,9 @@ apps, so it is built to do that only for you and only after you approve.
 - **The chat model.** It can suggest an action but never approve one. Every change
   (downloads, updates, deletions, restarts, ending a process, opening an app) waits for
   your click on an approval card, once, before it expires. Model answers are escaped
-  before formatting, so they can't load images, follow links or inject markup.
+  before formatting, so they can't load images, follow links or inject markup, and
+  formatting takes about as long as for plain text, so an odd answer can't slow down
+  the shell.
 - **Wrong downloads.** Every model is verified against the exact build (manifest
   digest and size) shown on its approval card. An update may replace only the exact
   older build you approved replacing.

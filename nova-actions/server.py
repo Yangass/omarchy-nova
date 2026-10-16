@@ -197,18 +197,37 @@ def cli_project_locked(profile: dict[str, Any]) -> bool:
     try: current_boot = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
     except OSError: return False
     return record.get("boot_id") == current_boot and proc(record["pid"]) is not None
+def _read_agent_file(git_dir: Path, name: str, limit: int) -> str | None:
+    """A small regular file inside the agent's .git, or None (audit 2026-10-16). The agent
+    can put a symlink to /dev/zero, a FIFO or a huge file there: never follow a symlink or
+    leave the folder, never wait on a FIFO or device, never read more than `limit` bytes."""
+    path = git_dir / name
+    try:
+        if not path.resolve().is_relative_to(git_dir.resolve()): return None
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    except (OSError, RuntimeError): return None
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode) or info.st_size > limit: return None
+        raw = os.read(descriptor, limit + 1)
+    except OSError: return None
+    finally: os.close(descriptor)
+    try: return raw.decode("ascii") if len(raw) <= limit else None
+    except UnicodeDecodeError: return None
 def _read_checkout_head(checkout: Path) -> str | None:
     # Files only: the agent can write this .git, and git config can run programs.
     git_dir = checkout / ".git"
     try:
-        head = (git_dir / "HEAD").read_text(encoding="ascii").strip()
-        if head.startswith("ref: "):
-            ref = head[5:]
-            if not re.fullmatch(r"refs/heads/[A-Za-z0-9._/-]+", ref) or ".." in ref: return None
-            loose = git_dir / ref
-            head = loose.read_text(encoding="ascii").strip() if loose.is_file() else next(
-                (line.split(" ", 1)[0] for line in (git_dir / "packed-refs").read_text(encoding="ascii").splitlines() if line.endswith(" " + ref)), "")
-    except (OSError, UnicodeDecodeError): return None
+        if not stat.S_ISDIR(git_dir.lstat().st_mode): return None
+    except OSError: return None
+    head = (_read_agent_file(git_dir, "HEAD", 4096) or "").strip()
+    if head.startswith("ref: "):
+        ref = head[5:]
+        if not re.fullmatch(r"refs/heads/[A-Za-z0-9._/-]+", ref) or ".." in ref: return None
+        loose = _read_agent_file(git_dir, ref, 4096)
+        packed = _read_agent_file(git_dir, "packed-refs", 1 << 20) if loose is None else ""
+        head = loose.strip() if loose is not None else next(
+            (line.split(" ", 1)[0] for line in (packed or "").splitlines() if line.endswith(" " + ref)), "")
     return head if re.fullmatch(r"[0-9a-f]{40}", head) else None
 CLI_BRANCH = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,99}")
 def _cli_canonical(profile: dict[str, Any]) -> tuple[Path, str]:

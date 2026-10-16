@@ -53,7 +53,7 @@ class PlainText(unittest.TestCase):
         self.assertEqual(rich, [("Panel.qml",
                                  'textFormat: chatLine.role === "assistant" ? TextEdit.RichText : TextEdit.PlainText')])
         panel = (ROOT / "Panel.qml").read_text()
-        self.assertIn('text: chatLine.role === "assistant" ? root.chatMarkdownHtml(chatLine.text) : chatLine.text', panel)
+        self.assertIn('text: chatLine.role === "assistant" ? root.chatMarkdownHtml(chatLine.shownText) : chatLine.shownText', panel)
 
     def test_every_text_edit_says_its_format(self):
         for path in QML:
@@ -68,6 +68,15 @@ class PlainText(unittest.TestCase):
         self.assertIn('var lines = esc(String(source || "")).split("\\n")', renderer)
         self.assertNotIn("<img", renderer)
         self.assertNotIn("<a ", renderer)
+
+    def test_the_chat_renderer_never_rescans_a_line(self):
+        # Audit 2026-10-16: ".+?" and "[^)]*" ran from every opener to the end of the line,
+        # so 30 KB of "**a " took 100 ms per redraw. Each pattern stops at its next opener.
+        panel = (ROOT / "Panel.qml").read_text()
+        renderer = panel[panel.index("function chatMarkdownHtml("):]
+        renderer = renderer[:renderer.index("\n  }\n")]
+        for pattern in re.findall(r"\.replace\((/.+?/g)", renderer):
+            self.assertNotRegex(pattern, r"\.[*+]|\[\^\)\]|\[\^\\\]\]", pattern)
 
 
 if __name__ == "__main__":

@@ -593,6 +593,10 @@ def cli_profiles_state() -> tuple[int, dict[str, Any]]:
     resident = resident_models()
     try: free = shutil.disk_usage(Path.home()).free
     except OSError: free = None
+    # The coding CLI launcher's preflight refuses unless NOVA is idle, and its terminal
+    # closed before the reason could be read (OPEN CLI during a model load "closes
+    # instantly"), so a busy NOVA blocks here first.
+    nova_state = RUNTIME.snapshot().get("state")
     profiles = []
     for item in payload.get("profiles", []) if isinstance(payload.get("profiles"), list) else []:
         if not isinstance(item, dict): continue
@@ -606,12 +610,26 @@ def cli_profiles_state() -> tuple[int, dict[str, Any]]:
         # One Qwen at a time: another project's CLI (or one NOVA can't place) is open.
         elif payload.get("client_active") is True: blocked = "other_cli_session_active"
         elif resident is None: blocked = "provider_unavailable"
+        elif nova_state == "model_switching": blocked = "model_loading"
+        elif nova_state != "idle": blocked = "nova_busy"
         elif any(name != item.get("model") for name in resident): blocked = "conflicting_resident_model"
         elif free is not None and free < CLI_MIN_FREE_BYTES: blocked = "low_disk"
+        # The CLI opens on a model already in GPU memory (Konstantin, 2026-10-16: load it in
+        # NOVA first; OPEN CLI is greyed out until then).
+        elif item.get("model") not in resident: blocked = "model_not_loaded"
         profiles.append({**item, "available": blocked is None, "blocked": blocked,
                          "conflicting_models": [n for n in resident or [] if n != item.get("model")]})
     return HTTPStatus.OK, {"configured": payload.get("configured") is True, "error": payload.get("error"), "profiles": profiles,
                            "client_active": payload.get("client_active") is True, "checked_at": utc_now()}
+
+
+def cli_launch_blocker(profile_id: str) -> str | None:
+    """Why this profile can't open now, checked again at launch; None when it can or when
+    NOVA can't tell (nova-actions then refuses or launches on its own checks)."""
+    status, payload = cli_profiles_state()
+    if status != HTTPStatus.OK: return None
+    profile = next((p for p in payload["profiles"] if p.get("id") == profile_id), None)
+    return profile.get("blocked") if profile and profile.get("available") is not True else None
 
 
 def cli_busy_models(payload: dict[str, Any]) -> list[str]:
@@ -733,7 +751,7 @@ def run_agent_loop(user_message: str, on_token: Callable[[str], None] | None = N
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "novad/0.14.9"
+    server_version = "novad/0.14.11"
     def log_message(self, _format: str, *_args: Any) -> None: return
     def send_json(self, status: HTTPStatus, payload: dict[str, Any]) -> bool:
         # Ends with a newline: the panel reads the socket line by line (BarWidget.novaRequest).
@@ -977,6 +995,11 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(value,dict) or set(value) != {"profile_id","model"} or not all(isinstance(value[k],str) and value[k] for k in value):
                 self.send_json(HTTPStatus.BAD_REQUEST,{"error":"invalid_cli_request"}); return
             audit("cli_launch_requested", profile_id=value["profile_id"], model=value["model"])
+            # The panel greys OPEN CLI from the same state, but its copy may be seconds old.
+            blocked = cli_launch_blocker(value["profile_id"])
+            if blocked:
+                audit("cli_launch_result", profile_id=value["profile_id"], status="blocked", error=blocked)
+                self.send_json(HTTPStatus.CONFLICT, {"status":"blocked","error":blocked}); return
             result = execute_action("open_coding_cli", {"profile_id":value["profile_id"],"model":value["model"]})
             audit("cli_launch_result", profile_id=value["profile_id"], status=result.get("status"), error=result.get("error"))
             self.send_json(HTTPStatus.OK if result.get("status") == "dispatched" else HTTPStatus.CONFLICT, result); return
