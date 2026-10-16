@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.14.9
+
+- **Security fix (marketplace review):** text NOVA shows is always shown as plain text.
+  Qt labels guess by default whether a text is HTML; ADD A MODEL showed what you typed in
+  such a label, so a short HTML image tag made the shell try to load that file, and a
+  special file could make the whole shell (top bar and panels) hang. Every label in NOVA
+  now shows text exactly as typed or received, and a test fails if one doesn't. Chat
+  answers keep their light formatting, which escapes everything first. Thanks again to
+  HANCORE-linux.
+
 ## 0.14.8
 
 - **Security fix (marketplace review):** NOVA's helpers no longer use network ports

@@ -114,6 +114,15 @@ QML_CHECK = r'''
         check(item("addModelInput").visible && item("addModelButton").visible, "field hidden")
         check(item("addModelInput").placeholderText.indexOf("gemma4:12b") >= 0, "no example: " + item("addModelInput").placeholderText)
       })
+      test("a reference that looks like HTML is shown as text (marketplace review #11195)", function() {
+        var reference = '<b>bold</b> <img src="file:///nonexistent/nova-check.png">'
+        novaPanel.addRequestedModel(reference)
+        var label = item("addModelStatusText")
+        check(label.textFormat === Text.PlainText, "status label format " + label.textFormat)
+        check(label.text.indexOf(reference) >= 0, "not shown literally: " + label.text)
+        var n = 0; while (novaPanel.addModelBusy && n++ < 200) wait(10)
+        novaPanel.addModelStatus = ""; novaPanel.addModelFailed = false
+      })
       test("an empty field sends nothing", function() {
         var before = get("/__requests__").requested.length
         novaPanel.addRequestedModel("   "); wait(50)

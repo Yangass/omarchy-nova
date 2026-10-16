@@ -3572,6 +3572,7 @@ Ui.Panel {
     width: parent ? parent.width : 0
     spacing: Style.spacing.xxs
     Text {
+      textFormat: Text.PlainText
       width: parent.width
       text: acquisitionProgress.observation.label || ""
       color: root.accent
@@ -3608,6 +3609,7 @@ Ui.Panel {
       }
     }
     Text {
+      textFormat: Text.PlainText
       width: parent.width
       text: acquisitionProgress.observation.detail || ""
       color: root.muted
@@ -3638,10 +3640,10 @@ Ui.Panel {
     readonly property color tint: root.loadTint(fraction)
     width: parent ? parent.width : implicitWidth
     implicitHeight: Math.max(rowLabel.implicitHeight, Style.space(14))
-    Text { id: rowLabel; width: Style.space(58); anchors.verticalCenter: parent.verticalCenter; text: row.label; color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.72); font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.1 }
+    Text { textFormat: Text.PlainText; id: rowLabel; width: Style.space(58); anchors.verticalCenter: parent.verticalCenter; text: row.label; color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.72); font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.1 }
     // Fixed width, so a changing value never moves the graph (lesson of the brain bar).
     TextMetrics { id: valueMetrics; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; text: "00.0 / 00.0 GiB" }
-    Text { id: rowValue; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; width: valueMetrics.width; horizontalAlignment: Text.AlignRight; text: row.value; color: row.fraction >= 0.85 ? row.tint : root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true }
+    Text { textFormat: Text.PlainText; id: rowValue; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; width: valueMetrics.width; horizontalAlignment: Text.AlignRight; text: row.value; color: row.fraction >= 0.85 ? row.tint : root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true }
     Item {
       id: graph
       anchors.left: rowLabel.right; anchors.right: rowValue.left; anchors.rightMargin: Style.spacing.sm
@@ -3756,6 +3758,7 @@ Ui.Panel {
       height: Math.max(roleLabel.implicitHeight, copyAnswerButton.visible ? copyAnswerButton.height : 0)
 
       Text {
+        textFormat: Text.PlainText
         id: roleLabel
         anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
@@ -3770,6 +3773,7 @@ Ui.Panel {
       }
 
       Text {
+        textFormat: Text.PlainText
         anchors.left: roleLabel.right
         anchors.leftMargin: Style.spacing.sm
         anchors.right: copyAnswerButton.left
@@ -3802,6 +3806,7 @@ Ui.Panel {
     }
 
     Text {
+      textFormat: Text.PlainText
       id: sourceLabel
       anchors.top: header.bottom
       anchors.topMargin: Style.spacing.xxs
@@ -3915,7 +3920,7 @@ Ui.Panel {
                     NumberAnimation { to: 1; duration: 500; easing.type: Easing.InOutSine }
                   }
                 }
-                Text { id: novaTitle; objectName: "novaTitle"; anchors.left: novaRobot.right; anchors.leftMargin: Style.spacing.md; anchors.verticalCenter: parent.verticalCenter; text: "NOVA"; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.heading; font.bold: true; font.letterSpacing: 2.2 }
+                Text { textFormat: Text.PlainText; id: novaTitle; objectName: "novaTitle"; anchors.left: novaRobot.right; anchors.leftMargin: Style.spacing.md; anchors.verticalCenter: parent.verticalCenter; text: "NOVA"; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.heading; font.bold: true; font.letterSpacing: 2.2 }
                 Row {
                   id: onlineIndicator
                   objectName: "onlineIndicator"
@@ -3931,13 +3936,14 @@ Ui.Panel {
                       NumberAnimation { to: 0.9; duration: 1500; easing.type: Easing.InOutSine }
                     }
                   }
-                  Text { objectName: "onlineStatusText"; text: root.online ? "ONLINE" : (root.novaSetupPending ? "SETUP NEEDED" : "OFFLINE"); color: root.statusColor; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.2 }
+                  Text { textFormat: Text.PlainText; objectName: "onlineStatusText"; text: root.online ? "ONLINE" : (root.novaSetupPending ? "SETUP NEEDED" : "OFFLINE"); color: root.statusColor; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.2 }
                 }
               }
               Item {
                 width: parent.width
                 height: Math.max(linkStatus.implicitHeight, uiBuildText.implicitHeight)
                 Text {
+                  textFormat: Text.PlainText
                   id: linkStatus
                   objectName: "linkStatus"
                   anchors.left: parent.left
@@ -3949,6 +3955,7 @@ Ui.Panel {
                   color: root.novaSetupPending ? root.muted : Color.urgent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.1
                 }
                 Text {
+                  textFormat: Text.PlainText
                   id: updateLink
                   objectName: "updateLink"
                   anchors.right: uiBuildText.left
@@ -3968,6 +3975,7 @@ Ui.Panel {
                   }
                 }
                 Text {
+                  textFormat: Text.PlainText
                   id: uiBuildText
                   objectName: "uiBuildText"
                   anchors.right: parent.right
@@ -4009,6 +4017,7 @@ Ui.Panel {
                 width: parent.width
                 height: brainLabel.implicitHeight + Style.space(4)
                 Text {
+                  textFormat: Text.PlainText
                   id: brainLabel
                   objectName: "brainLabel"
                   anchors.left: parent.left
@@ -4029,6 +4038,7 @@ Ui.Panel {
                   border.width: brainHeaderTarget.activeFocus ? 2 : 1
                 }
                 Text {
+                  textFormat: Text.PlainText
                   anchors.right: brainLabel.right; anchors.rightMargin: Style.space(4)
                   anchors.verticalCenter: brainLabel.verticalCenter
                   text: "›"
@@ -4094,6 +4104,7 @@ Ui.Panel {
                   implicitWidth: tabLabel.implicitWidth + (badge ? tabBadge.width + Style.spacing.xs : 0) + (warning || updates ? Style.space(10) : 0) + 2 * Style.space(14)
                   implicitHeight: tabLabel.implicitHeight + 2 * Style.spacing.sm
                   Text {
+                    textFormat: Text.PlainText
                     id: tabLabel
                     x: Style.space(14); anchors.verticalCenter: parent.verticalCenter
                     text: modelData.label
@@ -4106,7 +4117,7 @@ Ui.Panel {
                     anchors.left: tabLabel.right; anchors.leftMargin: Style.spacing.xs; anchors.verticalCenter: tabLabel.verticalCenter
                     width: badgeText.implicitWidth + Style.space(6); height: badgeText.implicitHeight
                     color: root.accent
-                    Text { id: badgeText; anchors.centerIn: parent; text: tab.badge; color: Color.background; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2; font.bold: true }
+                    Text { textFormat: Text.PlainText; id: badgeText; anchors.centerIn: parent; text: tab.badge; color: Color.background; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2; font.bold: true }
                   }
                   Rectangle {
                     visible: tab.warning
@@ -4149,6 +4160,7 @@ Ui.Panel {
               width: parent.width - Style.spacing.md
               spacing: Style.spacing.xs
               Text {
+                textFormat: Text.PlainText
                 id: previewNotice
                 width: parent.width
                 text: root.acceptanceSimulation
@@ -4214,7 +4226,7 @@ Ui.Panel {
               Row {
                 width: parent.width
                 spacing: Style.spacing.sm
-                Text { id: onboardingTitleText; width: Math.max(0, parent.width - onboardingActionButton.width - parent.spacing); anchors.verticalCenter: parent.verticalCenter; text: root.onboardingTitle(); color: root.onboardingState === "READY" ? root.accent : (root.onboardingState.indexOf("FAILED") >= 0 || root.onboardingState.indexOf("RECOVERY") >= 0 ? Color.urgent : root.foreground); font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1; wrapMode: Text.Wrap }
+                Text { textFormat: Text.PlainText; id: onboardingTitleText; width: Math.max(0, parent.width - onboardingActionButton.width - parent.spacing); anchors.verticalCenter: parent.verticalCenter; text: root.onboardingTitle(); color: root.onboardingState === "READY" ? root.accent : (root.onboardingState.indexOf("FAILED") >= 0 || root.onboardingState.indexOf("RECOVERY") >= 0 ? Color.urgent : root.foreground); font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1; wrapMode: Text.Wrap }
                 Ui.Button {
                   id: onboardingActionButton
                   objectName: "onboardingActionButton"
@@ -4233,7 +4245,7 @@ Ui.Panel {
                 }
               }
               // The setup step below states the precise cause and remedy; the generic line would repeat it.
-              Text { objectName: "onboardingMessageText"; visible: setupStepBox.step === null; width: parent.width; text: root.onboardingMessage(); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+              Text { textFormat: Text.PlainText; objectName: "onboardingMessageText"; visible: setupStepBox.step === null; width: parent.width; text: root.onboardingMessage(); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
               Column {
                 id: setupStepBox
                 objectName: "setupStepBox"
@@ -4241,7 +4253,7 @@ Ui.Panel {
                 visible: step !== null
                 width: parent.width
                 spacing: Style.spacing.xxs
-                Text { objectName: "setupStepText"; width: parent.width; text: setupStepBox.step ? setupStepBox.step.text : ""; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                Text { textFormat: Text.PlainText; objectName: "setupStepText"; width: parent.width; text: setupStepBox.step ? setupStepBox.step.text : ""; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
                 Ui.Button {
                   objectName: "setupStepButton"
                   text: setupStepBox.step ? setupStepBox.step.label : ""
@@ -4250,6 +4262,7 @@ Ui.Panel {
                   onClicked: root.runSetupStep()
                 }
                 Text {
+                  textFormat: Text.PlainText
                   objectName: "setupStepFollow"
                   visible: root.setupLaunched !== "" && setupStepBox.step !== null && setupStepBox.step.id === root.setupLaunched
                   width: parent.width
@@ -4274,6 +4287,7 @@ Ui.Panel {
             height: !visible ? 0 : root.shownView === "machine" ? Math.max(root.coreBandHeight, Math.min(Style.space(200), machineRoom)) : root.coreBandHeight
             Rectangle { anchors.fill: parent; color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, root.online ? 0.045 : 0.025); border.width: 1; border.color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.38) }
             Text {
+              textFormat: Text.PlainText
               id: coreStatus
               anchors.left: parent.left
               anchors.leftMargin: Style.spacing.md
@@ -4724,10 +4738,11 @@ Ui.Panel {
             implicitHeight: telemetryTitle.implicitHeight + telemetryGrid.implicitHeight + inset
             height: visible ? implicitHeight : 0
             Rectangle { x: 0; y: telemetryTitle.implicitHeight / 2; width: telemetryFrame.inset; height: 1; color: telemetryFrame.line }
-            Text { id: telemetryTitle; objectName: "telemetryTitle"; x: telemetryFrame.inset * 1.5; text: "MACHINE"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.5 }
+            Text { textFormat: Text.PlainText; id: telemetryTitle; objectName: "telemetryTitle"; x: telemetryFrame.inset * 1.5; text: "MACHINE"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.5 }
             Rectangle { x: telemetryTitle.x + telemetryTitle.implicitWidth + telemetryFrame.inset / 2; y: telemetryTitle.implicitHeight / 2; height: 1; color: telemetryFrame.line
                         width: Math.max(0, (telemetryFrame.hasTemperature ? telemetryTemperature.x - telemetryFrame.inset / 2 : telemetryFrame.width) - x) }
             Text {
+              textFormat: Text.PlainText
               id: telemetryTemperature
               objectName: "telemetryTemperature"
               visible: telemetryFrame.hasTemperature
@@ -4753,7 +4768,7 @@ Ui.Panel {
               TelemetryRow { objectName: "telemetryDisk"; visible: root.valid(root.disk); label: "DISK"; value: root.freeSpace(root.diskUsed, root.diskTotal); fraction: root.ratio(root.disk); tooltipText: "Disk " + root.diskMount + ": " + root.gib(root.diskUsed) + " of " + root.gib(root.diskTotal) + " used. Models need free space to download." }
               TelemetryRow { objectName: "telemetryNetDown"; visible: root.valid(root.netDown); label: "NET ↓"; dots: true; value: root.rateLabel(root.netDown); fraction: 0; history: root.netDownRaw.map(function(v) { return 100 * v / root.netPeak }); tooltipText: "Download speed of this computer's network adapters (Wi-Fi and wired)." }
               TelemetryRow { objectName: "telemetryNetUp"; visible: root.valid(root.netUp); label: "NET ↑"; dots: true; value: root.rateLabel(root.netUp); fraction: 0; history: root.netUpRaw.map(function(v) { return 100 * v / root.netPeak }); tooltipText: "Upload speed of this computer's network adapters (Wi-Fi and wired)." }
-              Text { visible: !root.valid(root.cpu) && !root.valid(root.memory) && !root.valid(root.disk) && !root.gpuAvailable; text: "Machine readings unavailable"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+              Text { textFormat: Text.PlainText; visible: !root.valid(root.cpu) && !root.valid(root.memory) && !root.valid(root.disk) && !root.gpuAvailable; text: "Machine readings unavailable"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
             }
           }
 
@@ -4791,37 +4806,37 @@ Ui.Panel {
                 interactive: contentHeight > height
                 Column {
                 id: approvalColumn; width: parent.width; spacing: Style.spacing.xs
-                Text { objectName: "approvalTitle"; text: root.pendingApproval && root.pendingApproval.recovery ? "RECOVERY REVIEW" : (root.pendingApproval && root.pendingApproval.removal ? "DELETE APPROVAL" : (root.pendingApproval && root.pendingApproval.update ? "UPDATE APPROVAL" : (root.pendingApproval && root.pendingApproval.acquisition ? "INSTALL APPROVAL" : "ACTION REQUEST"))); color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.2 }
-                Text { text: root.pendingApproval ? root.pendingApproval.summary : "ACTION"; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; font.bold: true }
+                Text { textFormat: Text.PlainText; objectName: "approvalTitle"; text: root.pendingApproval && root.pendingApproval.recovery ? "RECOVERY REVIEW" : (root.pendingApproval && root.pendingApproval.removal ? "DELETE APPROVAL" : (root.pendingApproval && root.pendingApproval.update ? "UPDATE APPROVAL" : (root.pendingApproval && root.pendingApproval.acquisition ? "INSTALL APPROVAL" : "ACTION REQUEST"))); color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.2 }
+                Text { textFormat: Text.PlainText; text: root.pendingApproval ? root.pendingApproval.summary : "ACTION"; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; font.bold: true }
                 Text { visible: !!(root.pendingApproval && root.pendingApproval.recovery === true); width: parent.width; text: root.recoveryAssessmentText(); textFormat: Text.PlainText; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; wrapMode: Text.Wrap }
-                Text { visible: !!(root.pendingApproval && root.pendingApproval.recovery === true); width: parent.width; text: "Check other terminals, model clients and automation for downloads. Empty model residency does not establish download inactivity. Do not confirm if uncertain."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
-                Text { visible: !!(root.pendingApproval && root.pendingApproval.target); text: "TARGET  " + (root.pendingApproval ? root.pendingApproval.target : ""); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
-                Text { visible: !!(root.pendingApproval && root.pendingApproval.process); text: "PROCESS  " + (root.pendingApproval ? root.pendingApproval.process : ""); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
-                Text { visible: !!(root.pendingApproval && root.pendingApproval.pid); text: "PID  " + (root.pendingApproval ? root.pendingApproval.pid : ""); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
-                Text { visible: !!(root.pendingApproval && root.pendingApproval.owner); text: "OWNER  " + (root.pendingApproval ? root.pendingApproval.owner : ""); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
-                Text { visible: !!(root.pendingApproval && root.pendingApproval.application); text: "APPLICATION  " + (root.pendingApproval ? root.pendingApproval.application : ""); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
-                Text { visible: !!(root.pendingApproval && root.pendingApproval.workspace !== undefined); text: "WORKSPACE: " + (root.pendingApproval ? root.pendingApproval.workspace : "") + " · STAY HERE"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                Text { textFormat: Text.PlainText; visible: !!(root.pendingApproval && root.pendingApproval.recovery === true); width: parent.width; text: "Check other terminals, model clients and automation for downloads. Empty model residency does not establish download inactivity. Do not confirm if uncertain."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                Text { textFormat: Text.PlainText; visible: !!(root.pendingApproval && root.pendingApproval.target); text: "TARGET  " + (root.pendingApproval ? root.pendingApproval.target : ""); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                Text { textFormat: Text.PlainText; visible: !!(root.pendingApproval && root.pendingApproval.process); text: "PROCESS  " + (root.pendingApproval ? root.pendingApproval.process : ""); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                Text { textFormat: Text.PlainText; visible: !!(root.pendingApproval && root.pendingApproval.pid); text: "PID  " + (root.pendingApproval ? root.pendingApproval.pid : ""); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                Text { textFormat: Text.PlainText; visible: !!(root.pendingApproval && root.pendingApproval.owner); text: "OWNER  " + (root.pendingApproval ? root.pendingApproval.owner : ""); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                Text { textFormat: Text.PlainText; visible: !!(root.pendingApproval && root.pendingApproval.application); text: "APPLICATION  " + (root.pendingApproval ? root.pendingApproval.application : ""); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                Text { textFormat: Text.PlainText; visible: !!(root.pendingApproval && root.pendingApproval.workspace !== undefined); text: "WORKSPACE: " + (root.pendingApproval ? root.pendingApproval.workspace : "") + " · STAY HERE"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                 // UX Phase 1: what, how big and whether it fits come first; every fact of the
                 // frozen preflight stays one click away (disclosed, not removed).
-                Text { objectName: "approvalSummaryLine"; visible: !!(root.pendingApproval && (root.pendingApproval.acquisition || root.pendingApproval.removal)); width: parent.width; wrapMode: Text.Wrap
+                Text { textFormat: Text.PlainText; objectName: "approvalSummaryLine"; visible: !!(root.pendingApproval && (root.pendingApproval.acquisition || root.pendingApproval.removal)); width: parent.width; wrapMode: Text.Wrap
                        text: !root.pendingApproval ? "" : root.pendingApproval.removal ? root.removalApprovalLine(root.pendingApproval) : root.pendingApproval.update ? "What changed: " + root.pendingApproval.whatChanged + " · download " + root.pendingApproval.download + " · " + root.approvalFitShort(root.pendingApproval.fit) + " · " + root.bytesLabel(root.pendingApproval.availableSpace) + " free" : root.bytesLabel(root.pendingApproval.size) + " on disk · " + root.approvalFitShort(root.pendingApproval.fit) + " · " + root.bytesLabel(root.pendingApproval.availableSpace) + " free"
                              + (root.pendingApproval.trust === "user_requested" ? " · not in NOVA's catalog" : "")
                        color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
-                Text { objectName: "approvalDetailsToggle"; visible: !!(root.pendingApproval && root.pendingApproval.acquisition); text: root.approvalDetailsOpen ? "[ HIDE DETAILS ]" : "[ DETAILS ]"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.7
+                Text { textFormat: Text.PlainText; objectName: "approvalDetailsToggle"; visible: !!(root.pendingApproval && root.pendingApproval.acquisition); text: root.approvalDetailsOpen ? "[ HIDE DETAILS ]" : "[ DETAILS ]"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.7
                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.approvalDetailsOpen = !root.approvalDetailsOpen } }
                 Column { objectName: "approvalDetails"; visible: root.approvalDetailsOpen || !(root.pendingApproval && root.pendingApproval.acquisition); width: parent.width; spacing: Style.spacing.xs
                   // Plain words for a first-time user; every fact of the frozen preflight stays disclosed.
-                  Text { visible: !!(root.pendingApproval && root.pendingApproval.acquisition); text: "DOWNLOADED BY  " + (root.pendingApproval ? root.providerPlainName(root.pendingApproval.provider) : "unknown"); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap; width: parent.width }
-                  Text { visible: !!(root.pendingApproval && root.pendingApproval.acquisition); text: "SIZE ON DISK  " + (root.pendingApproval ? root.bytesLabel(root.pendingApproval.size) : "unknown") + " (the download itself may differ a little)"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap; width: parent.width }
-                  Text { visible: !!(root.pendingApproval && root.pendingApproval.acquisition); text: "FREE SPACE NEEDED  " + (root.pendingApproval ? root.bytesLabel(root.pendingApproval.requiredSpace) : "unknown") + ", including a safety margin"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap; width: parent.width }
-                  Text { visible: !!(root.pendingApproval && root.pendingApproval.acquisition); text: "FREE SPACE NOW  " + (root.pendingApproval ? root.bytesLabel(root.pendingApproval.availableSpace) : "unknown") + " (measured when this request was made)"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap; width: parent.width }
-                  Text { visible: !!(root.pendingApproval && root.pendingApproval.acquisition); text: "FIT  " + (root.pendingApproval ? root.approvalFitText(root.pendingApproval.fit) : "Not estimated"); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap; width: parent.width }
-                  Text { visible: !!(root.pendingApproval && root.pendingApproval.acquisition); text: "SOURCE  " + root.approvalSourceText(root.pendingApproval ? root.pendingApproval.trust : ""); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap; width: parent.width }
-                  Text { visible: !!(root.pendingApproval && root.pendingApproval.acquisition && root.pendingApproval.provenance); text: "DETAILS  " + (root.pendingApproval ? root.pendingApproval.provenance : ""); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap; width: parent.width }
-                  Text { visible: !!(root.pendingApproval && root.pendingApproval.acquisition); text: "AFTER INSTALL  Nothing starts by itself; choose LOAD AND USE when you want it"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap; width: parent.width }
-                  Text { visible: !!(root.pendingApproval && root.pendingApproval.acquisition); text: "CANCEL  Not possible once the download has started"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap; width: parent.width }
+                  Text { textFormat: Text.PlainText; visible: !!(root.pendingApproval && root.pendingApproval.acquisition); text: "DOWNLOADED BY  " + (root.pendingApproval ? root.providerPlainName(root.pendingApproval.provider) : "unknown"); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap; width: parent.width }
+                  Text { textFormat: Text.PlainText; visible: !!(root.pendingApproval && root.pendingApproval.acquisition); text: "SIZE ON DISK  " + (root.pendingApproval ? root.bytesLabel(root.pendingApproval.size) : "unknown") + " (the download itself may differ a little)"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap; width: parent.width }
+                  Text { textFormat: Text.PlainText; visible: !!(root.pendingApproval && root.pendingApproval.acquisition); text: "FREE SPACE NEEDED  " + (root.pendingApproval ? root.bytesLabel(root.pendingApproval.requiredSpace) : "unknown") + ", including a safety margin"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap; width: parent.width }
+                  Text { textFormat: Text.PlainText; visible: !!(root.pendingApproval && root.pendingApproval.acquisition); text: "FREE SPACE NOW  " + (root.pendingApproval ? root.bytesLabel(root.pendingApproval.availableSpace) : "unknown") + " (measured when this request was made)"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap; width: parent.width }
+                  Text { textFormat: Text.PlainText; visible: !!(root.pendingApproval && root.pendingApproval.acquisition); text: "FIT  " + (root.pendingApproval ? root.approvalFitText(root.pendingApproval.fit) : "Not estimated"); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap; width: parent.width }
+                  Text { textFormat: Text.PlainText; visible: !!(root.pendingApproval && root.pendingApproval.acquisition); text: "SOURCE  " + root.approvalSourceText(root.pendingApproval ? root.pendingApproval.trust : ""); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap; width: parent.width }
+                  Text { textFormat: Text.PlainText; visible: !!(root.pendingApproval && root.pendingApproval.acquisition && root.pendingApproval.provenance); text: "DETAILS  " + (root.pendingApproval ? root.pendingApproval.provenance : ""); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap; width: parent.width }
+                  Text { textFormat: Text.PlainText; visible: !!(root.pendingApproval && root.pendingApproval.acquisition); text: "AFTER INSTALL  Nothing starts by itself; choose LOAD AND USE when you want it"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap; width: parent.width }
+                  Text { textFormat: Text.PlainText; visible: !!(root.pendingApproval && root.pendingApproval.acquisition); text: "CANCEL  Not possible once the download has started"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap; width: parent.width }
                 }
-                Text { text: "WHAT HAPPENS  " + (root.pendingApproval ? root.pendingApproval.impact : ""); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap; width: parent.width }
+                Text { textFormat: Text.PlainText; text: "WHAT HAPPENS  " + (root.pendingApproval ? root.pendingApproval.impact : ""); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap; width: parent.width }
                 }
               }
                 Column {
@@ -4847,10 +4862,10 @@ Ui.Panel {
                     Accessible.name: "I confirm no other model download is running"
                     Accessible.checked: root.pendingApproval && root.pendingApproval.operatorConfirmed === true
                     Rectangle { anchors.fill: parent; color: "transparent"; border.width: recoveryConfirmationControl.activeFocus ? 2 : 1; border.color: recoveryConfirmationControl.activeFocus ? root.accent : root.muted }
-                    Text { id: recoveryConfirmLabel; anchors.centerIn: parent; width: parent.width - Style.spacing.sm * 2; text: (root.pendingApproval && root.pendingApproval.operatorConfirmed === true ? "[x] " : "[ ] ") + "I confirm no other model download is running. (Space to toggle)"; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                    Text { textFormat: Text.PlainText; id: recoveryConfirmLabel; anchors.centerIn: parent; width: parent.width - Style.spacing.sm * 2; text: (root.pendingApproval && root.pendingApproval.operatorConfirmed === true ? "[x] " : "[ ] ") + "I confirm no other model download is running. (Space to toggle)"; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
                     MouseArea { anchors.fill: parent; objectName: "recoveryConfirmationHitTarget"; cursorShape: Qt.PointingHandCursor; onClicked: { recoveryConfirmationControl.forceActiveFocus(); root.toggleRecoveryConfirmation() } }
                   }
-                  Text { width: parent.width; visible: root.approvalFeedback !== ""; text: root.approvalFeedback; wrapMode: Text.Wrap; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                  Text { textFormat: Text.PlainText; width: parent.width; visible: root.approvalFeedback !== ""; text: root.approvalFeedback; wrapMode: Text.Wrap; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                   Row {
                   spacing: Style.spacing.sm
                   Item {
@@ -5006,6 +5021,7 @@ Ui.Panel {
             visible: root.modelsUnavailable && !root.catalogDownloadsExpanded
             spacing: Style.spacing.sm
             Text {
+              textFormat: Text.PlainText
               id: unavailable
               anchors.horizontalCenter: parent.horizontalCenter
               // Before Ollama exists this is a setup step, not a failure.
@@ -5019,6 +5035,7 @@ Ui.Panel {
             }
             // Run 6: the red line alone didn't say where the fix is.
             Text {
+              textFormat: Text.PlainText
               objectName: "modelsUnavailableReason"
               anchors.horizontalCenter: parent.horizontalCenter
               visible: unavailable.waitingForSetup || unavailable.waitingForOllama
@@ -5058,15 +5075,15 @@ Ui.Panel {
                 Item {
                   width: parent.width
                   height: Math.max(installedTitle.implicitHeight, refreshInstalledRow.height)
-                  Text { id: installedTitle; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; text: "INSTALLED · " + root.discoveredModels.length; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.4 }
-                  Text { anchors.left: installedTitle.right; anchors.leftMargin: Style.spacing.sm; anchors.verticalCenter: parent.verticalCenter; text: "on this computer" + (root.modelUpdatesAvailable > 0 ? " · " + root.modelUpdatesAvailable + (root.modelUpdatesAvailable === 1 ? " update" : " updates") : ""); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                  Text { textFormat: Text.PlainText; id: installedTitle; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; text: "INSTALLED · " + root.discoveredModels.length; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.4 }
+                  Text { textFormat: Text.PlainText; anchors.left: installedTitle.right; anchors.leftMargin: Style.spacing.sm; anchors.verticalCenter: parent.verticalCenter; text: "on this computer" + (root.modelUpdatesAvailable > 0 ? " · " + root.modelUpdatesAvailable + (root.modelUpdatesAvailable === 1 ? " update" : " updates") : ""); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                   Item { id: refreshInstalledRow; anchors.right: parent.right; width: childrenRect.width; height: childrenRect.height
                     CompactModelButton { objectName: "refreshInstalledModelsButton"; text: root.modelUpdatesChecking ? "CHECKING…" : "REFRESH"; tooltipText: "Re-read the installed models and ask Ollama's library for newer builds"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: true; enabled: !root.installedModelsLoading; Accessible.name: "Refresh installed models and check for updates"; onClicked: { root.refreshModels(); root.refreshModelUpdates(true) } }
                   }
                 }
-                Text { width: parent.width; visible: root.installedModelsLoading; text: "REFRESHING INSTALLED INVENTORY…"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 1 }
-                Text { width: parent.width; visible: !root.modelsUnavailable && !root.installedModelsLoading && root.discoveredModels.length === 0; text: "NO MODELS INSTALLED YET"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 1 }
-                Text { width: parent.width; visible: root.modelsUnavailable; text: "INSTALLED INVENTORY UNAVAILABLE · RETRY REFRESH"; color: Color.urgent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                Text { textFormat: Text.PlainText; width: parent.width; visible: root.installedModelsLoading; text: "REFRESHING INSTALLED INVENTORY…"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 1 }
+                Text { textFormat: Text.PlainText; width: parent.width; visible: !root.modelsUnavailable && !root.installedModelsLoading && root.discoveredModels.length === 0; text: "NO MODELS INSTALLED YET"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 1 }
+                Text { textFormat: Text.PlainText; width: parent.width; visible: root.modelsUnavailable; text: "INSTALLED INVENTORY UNAVAILABLE · RETRY REFRESH"; color: Color.urgent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
                 Repeater { model: root.discoveredModels; id: installedModelsRepeater; objectName: "installedModelsRepeater"
                   Item {
                     required property var modelData
@@ -5093,14 +5110,14 @@ Ui.Panel {
                         height: Math.max(installedModelId.height, inUseTag.height, installedModelSize.implicitHeight)
                         readonly property real nameRoom: width - (inUseTag.visible ? inUseTag.width + Style.spacing.sm : 0) - (updateTag.visible ? updateTag.width + Style.spacing.sm : 0) - installedModelSize.implicitWidth - Style.spacing.sm
                         TextMetrics { id: installedNameMetrics; font: installedModelId.font; text: installedModelId.text }
-                        Text { id: installedModelId; objectName: "installedModelId"; width: Math.min(installedNameMetrics.advanceWidth + 2, Math.max(Style.space(60), parent.nameRoom)); wrapMode: Text.Wrap; font.bold: true; text: root.modelPlainName(modelData.id); color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; font.letterSpacing: 0.4 }
+                        Text { textFormat: Text.PlainText; id: installedModelId; objectName: "installedModelId"; width: Math.min(installedNameMetrics.advanceWidth + 2, Math.max(Style.space(60), parent.nameRoom)); wrapMode: Text.Wrap; font.bold: true; text: root.modelPlainName(modelData.id); color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; font.letterSpacing: 0.4 }
                         Rectangle {
                           id: inUseTag
                           visible: root.installedModelSelected(modelData)
                           anchors.left: installedModelId.right; anchors.leftMargin: Style.spacing.sm; y: Style.space(2)
                           width: inUseText.implicitWidth + Style.space(8); height: inUseText.implicitHeight + Style.space(2)
                           color: "transparent"; border.width: 1; border.color: root.accent
-                          Text { id: inUseText; anchors.centerIn: parent; text: "IN USE"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2; font.bold: true; font.letterSpacing: 1 }
+                          Text { textFormat: Text.PlainText; id: inUseText; anchors.centerIn: parent; text: "IN USE"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2; font.bold: true; font.letterSpacing: 1 }
                         }
                         Rectangle {
                           id: updateTag
@@ -5109,11 +5126,12 @@ Ui.Panel {
                           anchors.left: inUseTag.visible ? inUseTag.right : installedModelId.right; anchors.leftMargin: Style.spacing.sm; y: Style.space(2)
                           width: updateTagText.implicitWidth + Style.space(8); height: updateTagText.implicitHeight + Style.space(2)
                           color: "transparent"; border.width: 1; border.color: root.accent
-                          Text { id: updateTagText; anchors.centerIn: parent; text: "UPDATE"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2; font.bold: true; font.letterSpacing: 1 }
+                          Text { textFormat: Text.PlainText; id: updateTagText; anchors.centerIn: parent; text: "UPDATE"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2; font.bold: true; font.letterSpacing: 1 }
                         }
-                        Text { id: installedModelSize; anchors.right: parent.right; y: Style.space(1); text: modelData.metadata && typeof modelData.metadata.size_bytes === "number" ? root.bytesLabel(modelData.metadata.size_bytes) : ""; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                        Text { textFormat: Text.PlainText; id: installedModelSize; anchors.right: parent.right; y: Style.space(1); text: modelData.metadata && typeof modelData.metadata.size_bytes === "number" ? root.bytesLabel(modelData.metadata.size_bytes) : ""; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                       }
                       Text {
+                        textFormat: Text.PlainText
                         objectName: "installedModelStatusText"
                         width: parent.width
                         // The exact Ollama name, then what it's doing; IN USE is the tag above.
@@ -5272,6 +5290,7 @@ Ui.Panel {
                             onClicked: root.proposeModelUpdate(modelData)
                           }
                           Text {
+                            textFormat: Text.PlainText
                             objectName: "modelUpdateSkip"
                             anchors.verticalCenter: parent.verticalCenter
                             text: "skip this version"; font.underline: true
@@ -5294,6 +5313,7 @@ Ui.Panel {
                             color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.55); font.family: root.fontFamily; font.pixelSize: Style.font.caption
                           }
                           Text {
+                            textFormat: Text.PlainText
                             id: showAgain
                             objectName: "modelUpdateShowAgain"
                             visible: !!(modelUpdateBlock.update && modelUpdateBlock.update.skipped)
@@ -5307,6 +5327,7 @@ Ui.Panel {
                         }
                       }
                       Text {
+                        textFormat: Text.PlainText
                         objectName: "removalStatusText"
                         visible: root.removalStatus !== "" && root.removalStatusModel === modelData.id
                         width: parent.width; wrapMode: Text.Wrap
@@ -5338,17 +5359,17 @@ Ui.Panel {
                           anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
                           anchors.margins: Style.spacing.sm
                           spacing: Style.spacing.xxs
-                          Text { text: "OPEN CODING CLI"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.1 }
+                          Text { textFormat: Text.PlainText; text: "OPEN CODING CLI"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.1 }
                           Text { width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText; text: cliConfirmCard.profile ? cliConfirmCard.profile.label : ""; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall }
                           Text { width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText; text: "MODEL  " + modelData.id; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                           Text { visible: cliConfirmCard.projects.length < 2; width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText; text: "PROJECT  " + (cliConfirmCard.profile ? cliConfirmCard.profile.project_label : ""); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
-                          Text { objectName: "cliSyncText"; visible: cliConfirmCard.projects.length < 2; width: parent.width; wrapMode: Text.Wrap; text: root.cliSyncSummary(cliConfirmCard.profile); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                          Text { textFormat: Text.PlainText; objectName: "cliSyncText"; visible: cliConfirmCard.projects.length < 2; width: parent.width; wrapMode: Text.Wrap; text: root.cliSyncSummary(cliConfirmCard.profile); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                           // Several projects for this model: choose one (click, or Up/Down; Enter launches).
                           Column {
                             objectName: "cliProjectPicker"
                             visible: cliConfirmCard.projects.length > 1
                             width: parent.width; spacing: Style.spacing.xxs
-                            Text { width: parent.width; text: "PROJECT · " + cliConfirmCard.projects.length + " set up for this model"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.6 }
+                            Text { textFormat: Text.PlainText; width: parent.width; text: "PROJECT · " + cliConfirmCard.projects.length + " set up for this model"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.6 }
                             Rectangle {
                               width: parent.width; height: cliProjectRows.implicitHeight + 2
                               color: "transparent"; border.width: 1; border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.16)
@@ -5378,7 +5399,7 @@ Ui.Panel {
                                       Text { width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
                                              text: (modelData.project_place ? modelData.project_place + " · " : "") + root.cliAgo(modelData.last_used)
                                              color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
-                                      Text { width: parent.width; wrapMode: Text.Wrap
+                                      Text { textFormat: Text.PlainText; width: parent.width; wrapMode: Text.Wrap
                                              text: modelData.available === true || modelData.running === true ? root.cliSyncShort(modelData)
                                                    : root.cliReasonFor(modelData)
                                              color: modelData.available !== true && modelData.running !== true ? Color.urgent
@@ -5392,9 +5413,9 @@ Ui.Panel {
                                 }
                               }
                             }
-                            Text { width: parent.width; text: "↑ ↓ CHOOSE · ENTER LAUNCH · ESC CANCEL"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 1 }
+                            Text { textFormat: Text.PlainText; width: parent.width; text: "↑ ↓ CHOOSE · ENTER LAUNCH · ESC CANCEL"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 1 }
                           }
-                          Text { width: parent.width; wrapMode: Text.Wrap; text: "New interactive session: no earlier task is resumed. Opening the CLI does not change NOVA's chat model."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                          Text { textFormat: Text.PlainText; width: parent.width; wrapMode: Text.Wrap; text: "New interactive session: no earlier task is resumed. Opening the CLI does not change NOVA's chat model."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                           Row {
                             spacing: Style.spacing.xxs
                             CompactModelButton { objectName: "cliConfirmLaunch"; selected: true; text: "LAUNCH [ENTER]"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: cliConfirmCard.visible; enabled: cliConfirmCard.visible && root.cliChosenCanLaunch(modelData); Accessible.name: "Launch coding CLI for " + modelData.id; onClicked: root.confirmCliLaunch(modelData) }
@@ -5403,6 +5424,7 @@ Ui.Panel {
                         }
                       }
                       Text {
+                        textFormat: Text.PlainText
                         objectName: "cliStatusText"
                         visible: root.cliStatus !== "" && root.cliStatusModel === modelData.id
                         width: parent.width; wrapMode: Text.Wrap
@@ -5412,12 +5434,12 @@ Ui.Panel {
                       }
                       Column { visible: root.installedModelDetailsOpen(modelData); width: parent.width; spacing: Style.spacing.xxs
                         Text { objectName: "installedModelExactName"; width: parent.width; text: "Exact name in Ollama: " + modelData.id; textFormat: Text.PlainText; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
-                        Text { width: parent.width; text: installedModelRow.catalogMatch ? root.fitSummary(modelData.id) : "Hardware fit hasn’t been verified yet."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
-                        Text { width: parent.width; text: installedModelRow.catalogMatch ? root.workingContextSummary(modelData.id) : "Working context hasn’t been estimated yet."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
-                        Text { visible: installedModelRow.catalogMatch !== null; width: parent.width; text: "Working context is how much conversation and reference material the model can work with at once."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
-                        Text { visible: installedModelRow.catalogMatch !== null; width: parent.width; text: root.catalogPropertiesSummary(installedModelRow.catalogMatch); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
-                        Text { visible: installedModelRow.catalogMatch !== null; width: parent.width; text: root.catalogFitConfidenceSummary(installedModelRow.catalogMatch); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
-                        Text { visible: root.installedMatchedDetail(modelData) !== ""; width: parent.width; text: root.installedMatchedDetail(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                        Text { textFormat: Text.PlainText; width: parent.width; text: installedModelRow.catalogMatch ? root.fitSummary(modelData.id) : "Hardware fit hasn’t been verified yet."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                        Text { textFormat: Text.PlainText; width: parent.width; text: installedModelRow.catalogMatch ? root.workingContextSummary(modelData.id) : "Working context hasn’t been estimated yet."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                        Text { textFormat: Text.PlainText; visible: installedModelRow.catalogMatch !== null; width: parent.width; text: "Working context is how much conversation and reference material the model can work with at once."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                        Text { textFormat: Text.PlainText; visible: installedModelRow.catalogMatch !== null; width: parent.width; text: root.catalogPropertiesSummary(installedModelRow.catalogMatch); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                        Text { textFormat: Text.PlainText; visible: installedModelRow.catalogMatch !== null; width: parent.width; text: root.catalogFitConfidenceSummary(installedModelRow.catalogMatch); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                        Text { textFormat: Text.PlainText; visible: root.installedMatchedDetail(modelData) !== ""; width: parent.width; text: root.installedMatchedDetail(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
                         Text { visible: root.installedMatchedHistory(modelData) !== ""; width: parent.width; text: root.installedMatchedHistory(modelData); textFormat: Text.PlainText; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
                       }
                     }
@@ -5431,8 +5453,8 @@ Ui.Panel {
                 visible: root.onlineCliItems.length > 0
                 spacing: Style.spacing.xs
                 Rectangle { width: parent.width; height: 1; color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.16) }
-                Text { objectName: "onlineCliTitle"; width: parent.width; wrapMode: Text.Wrap; text: "ONLINE CLIS · " + root.onlineCliItems.length; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.4 }
-                Text { width: parent.width; wrapMode: Text.Wrap; text: "Coding assistants that run online with your own account. NOVA stores no keys and does not change its chat model."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                Text { textFormat: Text.PlainText; objectName: "onlineCliTitle"; width: parent.width; wrapMode: Text.Wrap; text: "ONLINE CLIS · " + root.onlineCliItems.length; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.4 }
+                Text { textFormat: Text.PlainText; width: parent.width; wrapMode: Text.Wrap; text: "Coding assistants that run online with your own account. NOVA stores no keys and does not change its chat model."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                 Repeater { model: root.onlineCliItems; id: onlineCliRepeater; objectName: "onlineCliRepeater"
                   Column {
                     id: onlineCliRow
@@ -5472,10 +5494,10 @@ Ui.Panel {
                         anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
                         anchors.margins: Style.spacing.sm
                         spacing: Style.spacing.xxs
-                        Text { text: "OPEN CODING CLI"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.1 }
+                        Text { textFormat: Text.PlainText; text: "OPEN CODING CLI"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.1 }
                         Text { width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText; text: onlineCliRow.profile ? onlineCliRow.profile.label : ""; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall }
                         Text { objectName: "onlineCliProject"; width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText; text: "PROJECT  " + (onlineCliRow.profile ? onlineCliRow.profile.project_label : ""); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
-                        Text { width: parent.width; wrapMode: Text.Wrap; text: "Runs online: what you type goes to that service under your own account and sign-in. Opening it does not change NOVA's chat model."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                        Text { textFormat: Text.PlainText; width: parent.width; wrapMode: Text.Wrap; text: "Runs online: what you type goes to that service under your own account and sign-in. Opening it does not change NOVA's chat model."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                         Row {
                           spacing: Style.spacing.xxs
                           CompactModelButton { objectName: "onlineCliConfirmLaunch"; selected: true; text: "LAUNCH [ENTER]"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: onlineCliConfirmCard.visible; enabled: onlineCliConfirmCard.visible && root.cliChosenCanLaunch(modelData); Accessible.name: "Launch " + (onlineCliRow.profile ? onlineCliRow.profile.label : ""); onClicked: root.confirmCliLaunch(modelData) }
@@ -5484,6 +5506,7 @@ Ui.Panel {
                       }
                     }
                     Text {
+                      textFormat: Text.PlainText
                       objectName: "onlineCliStatusText"
                       visible: root.cliStatus !== "" && root.cliStatusModel === modelData.id
                       width: parent.width; wrapMode: Text.Wrap
@@ -5494,7 +5517,7 @@ Ui.Panel {
                   }
                 }
               }
-              Text { objectName: "modelSwitchStatusText"; visible: root.modelSwitchStatus !== ""; text: root.modelSwitchStatus; color: root.modelSwitchStatus.indexOf("FAILED") >= 0 || root.modelSwitchStatus === "MODEL UNAVAILABLE" ? Color.urgent : root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.1 }
+              Text { textFormat: Text.PlainText; objectName: "modelSwitchStatusText"; visible: root.modelSwitchStatus !== ""; text: root.modelSwitchStatus; color: root.modelSwitchStatus.indexOf("FAILED") >= 0 || root.modelSwitchStatus === "MODEL UNAVAILABLE" ? Color.urgent : root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.1 }
               Rectangle {
                 id: globalAcquisitionStatusBadge
                 objectName: "globalAcquisitionStatusBadge"
@@ -5506,7 +5529,7 @@ Ui.Panel {
                                (root.acquisitionStatus.indexOf("FAILED") >= 0 || root.acquisitionStatus.indexOf("UNAVAILABLE") >= 0 ? Color.urgent : root.accent).b, 0.08)
                 border.width: 1
                 border.color: root.acquisitionStatus.indexOf("FAILED") >= 0 || root.acquisitionStatus.indexOf("UNAVAILABLE") >= 0 ? Color.urgent : Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.52)
-                Text { id: globalAcquisitionStatusText; anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; anchors.leftMargin: Style.spacing.xs; anchors.rightMargin: Style.spacing.xs; text: root.acquisitionStatus; color: root.acquisitionStatus.indexOf("FAILED") >= 0 || root.acquisitionStatus.indexOf("UNAVAILABLE") >= 0 ? Color.urgent : root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 0.7; wrapMode: Text.Wrap }
+                Text { textFormat: Text.PlainText; id: globalAcquisitionStatusText; anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; anchors.leftMargin: Style.spacing.xs; anchors.rightMargin: Style.spacing.xs; text: root.acquisitionStatus; color: root.acquisitionStatus.indexOf("FAILED") >= 0 || root.acquisitionStatus.indexOf("UNAVAILABLE") >= 0 ? Color.urgent : root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 0.7; wrapMode: Text.Wrap }
               }
               Column {
                 id: downloadCatalog
@@ -5519,8 +5542,8 @@ Ui.Panel {
                 Item { width: 1; height: Style.spacing.md }
                 Row {
                   spacing: Style.spacing.sm
-                  Text { objectName: "addModelTitle"; text: "ADD A MODEL"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.4 }
-                  Text { text: "any Ollama name; nothing downloads until you approve"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                  Text { textFormat: Text.PlainText; objectName: "addModelTitle"; text: "ADD A MODEL"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.4 }
+                  Text { textFormat: Text.PlainText; text: "any Ollama name; nothing downloads until you approve"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                 }
                 Row {
                   objectName: "addModelRow"
@@ -5539,24 +5562,24 @@ Ui.Panel {
                   }
                   CompactModelButton { id: addModelButton; objectName: "addModelButton"; anchors.verticalCenter: parent.verticalCenter; text: root.addModelBusy ? "LOOKING UP…" : "ADD"; tooltipText: "Look up this model in Ollama's library; nothing downloads"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: true; enabled: !root.addModelBusy && addModelInput.text.trim() !== ""; onClicked: root.addRequestedModel(addModelInput.text) }
                 }
-                Text { objectName: "addModelStatusText"; visible: root.addModelStatus !== ""; width: parent.width; wrapMode: Text.Wrap; text: root.addModelStatus; color: root.addModelFailed ? Color.urgent : root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                Text { textFormat: Text.PlainText; objectName: "addModelStatusText"; visible: root.addModelStatus !== ""; width: parent.width; wrapMode: Text.Wrap; text: root.addModelStatus; color: root.addModelFailed ? Color.urgent : root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                 Item { width: 1; height: Style.spacing.md }
                 Row {
                   spacing: Style.spacing.sm
-                  Text { objectName: "downloadsTitle"; text: "DOWNLOADS · " + root.orderedCatalogModels.filter(root.catalogRowVisible).length; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.4 }
-                  Text { text: "suggested and fitting models first"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                  Text { textFormat: Text.PlainText; objectName: "downloadsTitle"; text: "DOWNLOADS · " + root.orderedCatalogModels.filter(root.catalogRowVisible).length; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.4 }
+                  Text { textFormat: Text.PlainText; text: "suggested and fitting models first"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                 }
                 Rectangle { objectName: "catalogDetailsToggle"; width: selectorDetails.implicitWidth + Style.spacing.md; height: selectorDetails.implicitHeight + Style.spacing.xs; color: "transparent"; border.width: 1; border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.22)
-                  Text { id: selectorDetails; anchors.centerIn: parent; text: root.selectorDetailsExpanded ? "[ HIDE CATALOG DETAILS ]" : "[ CATALOG DETAILS ]"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.7 }
+                  Text { textFormat: Text.PlainText; id: selectorDetails; anchors.centerIn: parent; text: root.selectorDetailsExpanded ? "[ HIDE CATALOG DETAILS ]" : "[ CATALOG DETAILS ]"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.7 }
                   MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.selectorDetailsExpanded = !root.selectorDetailsExpanded }
                 }
                 Column { visible: root.selectorDetailsExpanded; width: parent.width; spacing: Style.spacing.xxs
-                  Text { width: parent.width; text: root.catalogSummary; color: root.catalogSummary.indexOf("UNAVAILABLE") >= 0 || root.catalogSummary.indexOf("MISMATCH") >= 0 ? Color.urgent : root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.5; wrapMode: Text.Wrap }
-                  Text { width: parent.width; text: root.hardwareSummary; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
-                  Text { width: parent.width; text: root.recommendationSummary === "RECOMMEND // INSUFFICIENT EVIDENCE" ? "Recommendations need more evidence before NOVA can suggest a model." : root.recommendationSummary; color: root.recommendationSummary.indexOf("UNAVAILABLE") >= 0 ? root.muted : root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                  Text { textFormat: Text.PlainText; width: parent.width; text: root.catalogSummary; color: root.catalogSummary.indexOf("UNAVAILABLE") >= 0 || root.catalogSummary.indexOf("MISMATCH") >= 0 ? Color.urgent : root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.5; wrapMode: Text.Wrap }
+                  Text { textFormat: Text.PlainText; width: parent.width; text: root.hardwareSummary; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                  Text { textFormat: Text.PlainText; width: parent.width; text: root.recommendationSummary === "RECOMMEND // INSUFFICIENT EVIDENCE" ? "Recommendations need more evidence before NOVA can suggest a model." : root.recommendationSummary; color: root.recommendationSummary.indexOf("UNAVAILABLE") >= 0 ? root.muted : root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
                 }
-                Text { objectName: "suggestionSummary"; visible: root.suggestionSummary !== ""; width: parent.width; text: root.suggestionSummary; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.6; wrapMode: Text.Wrap }
-                Text { objectName: "budgetNote"; visible: root.budgetNote !== ""; width: parent.width; text: root.budgetNote; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                Text { textFormat: Text.PlainText; objectName: "suggestionSummary"; visible: root.suggestionSummary !== ""; width: parent.width; text: root.suggestionSummary; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.6; wrapMode: Text.Wrap }
+                Text { textFormat: Text.PlainText; objectName: "budgetNote"; visible: root.budgetNote !== ""; width: parent.width; text: root.budgetNote; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
               Repeater { model: root.orderedCatalogModels; id: catalogModelRepeater; objectName: "catalogModelRepeater"
                 Item {
                   required property var modelData
@@ -5583,7 +5606,7 @@ Ui.Panel {
                         id: catalogTitleFlow
                         width: parent.width - catalogSize.implicitWidth - Style.spacing.sm
                         spacing: Style.spacing.sm
-                        Text { objectName: "catalogRowTitle"; text: root.friendlyModelName(modelData.catalog_id); color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; font.bold: true; wrapMode: Text.Wrap; width: Math.min(implicitWidth, catalogTitleFlow.width) }
+                        Text { textFormat: Text.PlainText; objectName: "catalogRowTitle"; text: root.friendlyModelName(modelData.catalog_id); color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; font.bold: true; wrapMode: Text.Wrap; width: Math.min(implicitWidth, catalogTitleFlow.width) }
                         Repeater {
                           model: [root.isSwitchDestination(modelData) ? "SWITCHING…" : "", root.isExplicitlySelected(modelData) ? "IN USE" : "", root.catalogIsNew(modelData.catalog_id) ? "NEW" : "",
                                   root.suggestionFor(modelData.catalog_id) ? "SUGGESTED" : "", modelData.user_requested === true ? "YOU ADDED" : ""].filter(function(t) { return t !== "" })
@@ -5595,15 +5618,15 @@ Ui.Panel {
                             y: Style.space(2)
                             color: filled ? root.accent : "transparent"
                             border.width: 1; border.color: filled || modelData === "IN USE" ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.35)
-                            Text { id: catalogTagText; anchors.centerIn: parent; text: parent.modelData; color: parent.filled ? Color.background : (parent.modelData === "IN USE" ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.7)); font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2; font.bold: true; font.letterSpacing: 1 }
+                            Text { textFormat: Text.PlainText; id: catalogTagText; anchors.centerIn: parent; text: parent.modelData; color: parent.filled ? Color.background : (parent.modelData === "IN USE" ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.7)); font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2; font.bold: true; font.letterSpacing: 1 }
                           }
                         }
                       }
-                      Text { id: catalogSize; anchors.right: parent.right; y: Style.space(1); text: root.catalogSizeLabel(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                      Text { textFormat: Text.PlainText; id: catalogSize; anchors.right: parent.right; y: Style.space(1); text: root.catalogSizeLabel(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                     }
                     Text { objectName: "catalogSuggestion"; visible: root.suggestionLine(modelData.catalog_id) !== ""; width: parent.width; text: root.suggestionLine(modelData.catalog_id); textFormat: Text.PlainText; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
-                    Text { objectName: "catalogFitText"; width: parent.width; text: root.rowFitSummary(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
-                    Text { width: parent.width; text: root.rowContextSummary(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                    Text { textFormat: Text.PlainText; objectName: "catalogFitText"; width: parent.width; text: root.rowFitSummary(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                    Text { textFormat: Text.PlainText; width: parent.width; text: root.rowContextSummary(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
                     Rectangle {
                       id: acquisitionStatusBadge
                       objectName: "acquisitionStatusBadge"
@@ -5614,9 +5637,9 @@ Ui.Panel {
                       color: Qt.rgba((warning ? Color.urgent : root.foreground).r, (warning ? Color.urgent : root.foreground).g, (warning ? Color.urgent : root.foreground).b, 0.045)
                       border.width: 1
                       border.color: warning ? Qt.rgba(Color.urgent.r, Color.urgent.g, Color.urgent.b, 0.65) : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
-                      Text { id: acquisitionStatusBadgeText; anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; anchors.leftMargin: Style.spacing.xs; anchors.rightMargin: Style.spacing.xs; text: root.acquisitionPlainLabel(modelData); color: acquisitionStatusBadge.warning ? Color.urgent : root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                      Text { textFormat: Text.PlainText; id: acquisitionStatusBadgeText; anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; anchors.leftMargin: Style.spacing.xs; anchors.rightMargin: Style.spacing.xs; text: root.acquisitionPlainLabel(modelData); color: acquisitionStatusBadge.warning ? Color.urgent : root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
                     }
-                    Text { visible: root.recoveryAllowsRetry(root.acquisitionFor(modelData.catalog_id)); width: parent.width; text: "Previous attempt interrupted · recovery reviewed · fresh approval required"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                    Text { textFormat: Text.PlainText; visible: root.recoveryAllowsRetry(root.acquisitionFor(modelData.catalog_id)); width: parent.width; text: "Previous attempt interrupted · recovery reviewed · fresh approval required"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
                     CompactModelButton {
                       objectName: "reviewRecoveryButton"
                       visible: { var record = root.acquisitionFor(modelData.catalog_id); return record && record.state === "RECOVERY_REQUIRED" && !record.recovery_resolution }
@@ -5677,10 +5700,10 @@ Ui.Panel {
                       }
                     }
                     Column { visible: root.modelDetailsOpen(modelData.catalog_id); width: parent.width; spacing: Style.spacing.xxs
-                      Text { width: parent.width; text: "Working context is how much conversation and reference material the model can work with at once."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
-                      Text { width: parent.width; text: root.catalogPropertiesSummary(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
-                      Text { width: parent.width; text: root.catalogFitConfidenceSummary(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
-                      Text { visible: root.acquisitionDetail(modelData) !== ""; width: parent.width; text: root.acquisitionDetail(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                      Text { textFormat: Text.PlainText; width: parent.width; text: "Working context is how much conversation and reference material the model can work with at once."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                      Text { textFormat: Text.PlainText; width: parent.width; text: root.catalogPropertiesSummary(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                      Text { textFormat: Text.PlainText; width: parent.width; text: root.catalogFitConfidenceSummary(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                      Text { textFormat: Text.PlainText; visible: root.acquisitionDetail(modelData) !== ""; width: parent.width; text: root.acquisitionDetail(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
                       Text { visible: root.acquisitionHistory(modelData) !== ""; width: parent.width; text: root.acquisitionHistory(modelData); textFormat: Text.PlainText; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
                     }
                   }
@@ -5757,8 +5780,9 @@ Ui.Panel {
               objectName: "machineDetails"
               width: machineDetailsViewport.width
               spacing: Style.spacing.xs
-              Text { text: "IN " + root.memoryWord.toUpperCase(); color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.4 }
+              Text { textFormat: Text.PlainText; text: "IN " + root.memoryWord.toUpperCase(); color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.4 }
               Text {
+                textFormat: Text.PlainText
                 objectName: "gpuMemoryEmpty"
                 visible: root.residentModels.length === 0
                 width: parent.width; wrapMode: Text.Wrap
@@ -5781,13 +5805,13 @@ Ui.Panel {
                     Item {
                       width: parent.width
                       height: Math.max(gpuMemoryName.implicitHeight, gpuMemorySize.implicitHeight)
-                      Text { id: gpuMemoryName; objectName: "gpuMemoryModelName"; width: parent.width - gpuMemorySize.implicitWidth - Style.spacing.sm; elide: Text.ElideRight; text: root.modelPlainName(modelData.id); color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; font.bold: true }
-                      Text { id: gpuMemorySize; objectName: "gpuMemoryModelSize"; anchors.right: parent.right; text: root.residentSizeLabel(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                      Text { textFormat: Text.PlainText; id: gpuMemoryName; objectName: "gpuMemoryModelName"; width: parent.width - gpuMemorySize.implicitWidth - Style.spacing.sm; elide: Text.ElideRight; text: root.modelPlainName(modelData.id); color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; font.bold: true }
+                      Text { textFormat: Text.PlainText; id: gpuMemorySize; objectName: "gpuMemoryModelSize"; anchors.right: parent.right; text: root.residentSizeLabel(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                     }
                     Item {
                       width: parent.width
                       height: Math.max(gpuMemoryNote.implicitHeight, freeGpuMemoryButton.height)
-                      Text { id: gpuMemoryNote; anchors.left: parent.left; anchors.right: freeGpuMemoryButton.left; anchors.rightMargin: Style.spacing.sm; anchors.verticalCenter: parent.verticalCenter; wrapMode: Text.Wrap
+                      Text { textFormat: Text.PlainText; id: gpuMemoryNote; anchors.left: parent.left; anchors.right: freeGpuMemoryButton.left; anchors.rightMargin: Style.spacing.sm; anchors.verticalCenter: parent.verticalCenter; wrapMode: Text.Wrap
                              text: root.removalStatusModel === modelData.id && root.removalStatus !== "" ? root.removalStatus : "unloads by itself 10 min after last use"
                              color: root.removalStatusModel === modelData.id && root.removalFailed ? Color.urgent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.55); font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                       CompactModelButton {
@@ -5806,8 +5830,9 @@ Ui.Panel {
                 }
               }
               Item { width: 1; height: Style.spacing.xs }
-              Text { text: "VERSIONS"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.4 }
+              Text { textFormat: Text.PlainText; text: "VERSIONS"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.4 }
               Text {
+                textFormat: Text.PlainText
                 objectName: "machineVersions"
                 width: parent.width; wrapMode: Text.Wrap; lineHeight: 1.3
                 text: "NOVA " + root.displayUiIdentity
@@ -5827,14 +5852,14 @@ Ui.Panel {
           anchors.bottom: parent.bottom
           spacing: Style.spacing.sm
 
-          Text { visible: root.approvalFeedback !== "" && !root.pendingApproval; width: parent.width; text: root.approvalFeedback; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
-          Text { visible: root.chatContextNotice !== ""; width: parent.width; text: root.chatContextNotice; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
-          Text { visible: root.chatSessionSetupInFlight || root.chatRetentionPending; width: parent.width; text: root.chatSessionSetupInFlight ? "STARTING CONVERSATION CONTEXT…" : "CHECKING CONVERSATION CONTEXT…"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 0.8; wrapMode: Text.Wrap }
-          Text { visible: root.chatBusy; text: root.effectiveState === "tool_call" ? "INSPECTING // " + (root.currentTool || "DIAGNOSTICS").replace(/_/g, " ").toUpperCase() : (root.effectiveState === "approval_required" ? "AWAITING APPROVAL // " + (root.currentTool || "ACTION").replace(/_/g, " ").toUpperCase() : "NOVA // " + root.stateWords(root.effectiveState)); color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1 }
-          Text { objectName: "chatWaitNotice"; visible: root.chatWaitNotice !== "" && !root.chatBusy && root.pendingApproval === null; width: parent.width; text: root.chatWaitNotice; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
-          Text { objectName: "modelLoadingHint"; visible: root.chatBusy && root.chatLoadsModel && root.effectiveState === "loading_model"; width: parent.width; text: "Loading " + root.modelPlainName(root.activeModel) + " into " + root.memoryWord + ": it was unloaded after 10 idle minutes. This usually takes 10–30 seconds, then NOVA replies."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
-          Text { objectName: "slowFirstReplyHint"; visible: root.slowFirstReply; width: parent.width; text: "Reading your message. The first reply can take a minute, longer on computers without a graphics card."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
-          Text { visible: root.chatError !== ""; text: root.chatError.toUpperCase(); color: Color.urgent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 0.8; wrapMode: Text.WordWrap; width: parent.width }
+          Text { textFormat: Text.PlainText; visible: root.approvalFeedback !== "" && !root.pendingApproval; width: parent.width; text: root.approvalFeedback; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+          Text { textFormat: Text.PlainText; visible: root.chatContextNotice !== ""; width: parent.width; text: root.chatContextNotice; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+          Text { textFormat: Text.PlainText; visible: root.chatSessionSetupInFlight || root.chatRetentionPending; width: parent.width; text: root.chatSessionSetupInFlight ? "STARTING CONVERSATION CONTEXT…" : "CHECKING CONVERSATION CONTEXT…"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 0.8; wrapMode: Text.Wrap }
+          Text { textFormat: Text.PlainText; visible: root.chatBusy; text: root.effectiveState === "tool_call" ? "INSPECTING // " + (root.currentTool || "DIAGNOSTICS").replace(/_/g, " ").toUpperCase() : (root.effectiveState === "approval_required" ? "AWAITING APPROVAL // " + (root.currentTool || "ACTION").replace(/_/g, " ").toUpperCase() : "NOVA // " + root.stateWords(root.effectiveState)); color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1 }
+          Text { textFormat: Text.PlainText; objectName: "chatWaitNotice"; visible: root.chatWaitNotice !== "" && !root.chatBusy && root.pendingApproval === null; width: parent.width; text: root.chatWaitNotice; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+          Text { textFormat: Text.PlainText; objectName: "modelLoadingHint"; visible: root.chatBusy && root.chatLoadsModel && root.effectiveState === "loading_model"; width: parent.width; text: "Loading " + root.modelPlainName(root.activeModel) + " into " + root.memoryWord + ": it was unloaded after 10 idle minutes. This usually takes 10–30 seconds, then NOVA replies."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+          Text { textFormat: Text.PlainText; objectName: "slowFirstReplyHint"; visible: root.slowFirstReply; width: parent.width; text: "Reading your message. The first reply can take a minute, longer on computers without a graphics card."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+          Text { textFormat: Text.PlainText; visible: root.chatError !== ""; text: root.chatError.toUpperCase(); color: Color.urgent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 0.8; wrapMode: Text.WordWrap; width: parent.width }
           Row {
             objectName: "chatInputRow"
             visible: root.shownView === "chat"  // the message box lives in CHAT only (2026-10-09)
@@ -5890,7 +5915,7 @@ Ui.Panel {
           Rectangle { width: parent.width; height: 1; color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.14) }
           Row {
             width: parent.width
-            Text { id: refreshHint; objectName: "refreshHint"; text: root.refreshAge(); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.7 }
+            Text { textFormat: Text.PlainText; id: refreshHint; objectName: "refreshHint"; text: root.refreshAge(); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.7 }
           }
         }
       }
