@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui as Ui
 
 Ui.Panel {
@@ -97,16 +98,16 @@ Ui.Panel {
   readonly property var residentModels: discoveredModels.filter(function(m) { return m && m.resident === true })
   readonly property var vramHistory: hostWidget ? hostWidget.vramHistory : []
   readonly property double updatedAt: hostWidget ? hostWidget.updatedAt : 0
-  readonly property color foreground: bar ? bar.foreground : Color.foreground
-  readonly property color muted: Color.muted
-  readonly property color accent: Color.accent
+  readonly property color foreground: bar ? bar.foreground : Commons.Color.foreground
+  readonly property color muted: Commons.Color.muted
+  readonly property color accent: Commons.Color.accent
   // Before NOVA's services run, the setup box already shows the remedy; a red
   // OFFLINE beside it read as broken to a first-time user (walkthrough run 2).
   readonly property bool novaSetupPending: {
     var step = online ? null : setupStep()
     return step !== null && (step.id === "nova" || step.id === "nova-start")
   }
-  readonly property color statusColor: online ? accent : (novaSetupPending ? muted : Color.urgent)
+  readonly property color statusColor: online ? accent : (novaSetupPending ? muted : Commons.Color.urgent)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   property int clockTick: 0
   property bool chatBusy: false
@@ -1675,7 +1676,7 @@ Ui.Panel {
   // Delete must read as delete in every theme: the theme's urgent colour when it is
   // actually red, otherwise a fixed soft red (some themes map "red"/urgent to green).
   readonly property color destructiveColor: {
-    var c = Color.urgent, h = c.hslHue, sat = c.hslSaturation
+    var c = Commons.Color.urgent, h = c.hslHue, sat = c.hslSaturation
     return h >= 0 && (h <= 20 / 360 || h >= 340 / 360) && sat > 0.3 ? c : "#e5534b"
   }
   function removalBlockerText(code) {
@@ -3636,8 +3637,8 @@ Ui.Panel {
   // near the limit; readings this machine can't report are hidden, not boxed.
   function loadTint(fraction) {
     if (!isFinite(fraction)) return accent
-    if (fraction >= 0.95) return Color.urgent
-    if (fraction >= 0.85) return Qt.rgba((accent.r + Color.urgent.r) / 2, (accent.g + Color.urgent.g) / 2, (accent.b + Color.urgent.b) / 2, 1)
+    if (fraction >= 0.95) return Commons.Color.urgent
+    if (fraction >= 0.85) return Qt.rgba((accent.r + Commons.Color.urgent.r) / 2, (accent.g + Commons.Color.urgent.g) / 2, (accent.b + Commons.Color.urgent.b) / 2, 1)
     return accent
   }
   function freeSpace(used, total) { return valid(used) && valid(total) && total >= used ? (total - used).toFixed(0) + " GiB free" : "—" }
@@ -3793,7 +3794,7 @@ Ui.Panel {
         text: chatLine.role === "user" ? "YOU" : chatLine.role === "system" ? "NOVA · SYSTEM"
           : (chatLine.responseStatus === "incomplete" ? "NOVA · INCOMPLETE" : "NOVA")
         color: chatLine.role === "user" || chatLine.role === "system" ? root.muted
-          : (chatLine.responseStatus === "incomplete" ? Color.urgent : root.accent)
+          : (chatLine.responseStatus === "incomplete" ? Commons.Color.urgent : root.accent)
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
         font.bold: true
@@ -3929,7 +3930,7 @@ Ui.Panel {
                   anchors.left: parent.left
                   anchors.verticalCenter: parent.verticalCenter
                   width: Math.round(Style.font.display * 1.15); height: width
-                  accent: root.statusColor; foreground: root.foreground; background: Color.background
+                  accent: root.statusColor; foreground: root.foreground; background: Commons.Color.background
                   Behavior on accent { ColorAnimation { duration: 240 } }
                   // Slow breath at rest, quick pulse while NOVA works, still otherwise.
                   readonly property bool lively: root.opened && !root.coreReducedMotion
@@ -3980,7 +3981,7 @@ Ui.Panel {
                   // only when something is wrong. The core says what NOVA is doing.
                   text: root.online ? "" : (root.novaSetupPending ? "NOVA setup needed" : "NOVA is offline")
                   elide: Text.ElideRight
-                  color: root.novaSetupPending ? root.muted : Color.urgent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.1
+                  color: root.novaSetupPending ? root.muted : Commons.Color.urgent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.1
                 }
                 Text {
                   textFormat: Text.PlainText
@@ -4145,12 +4146,12 @@ Ui.Panel {
                     anchors.left: tabLabel.right; anchors.leftMargin: Style.spacing.xs; anchors.verticalCenter: tabLabel.verticalCenter
                     width: badgeText.implicitWidth + Style.space(6); height: badgeText.implicitHeight
                     color: root.accent
-                    Text { textFormat: Text.PlainText; id: badgeText; anchors.centerIn: parent; text: tab.badge; color: Color.background; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2; font.bold: true }
+                    Text { textFormat: Text.PlainText; id: badgeText; anchors.centerIn: parent; text: tab.badge; color: Commons.Color.background; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2; font.bold: true }
                   }
                   Rectangle {
                     visible: tab.warning
                     anchors.left: tabLabel.right; anchors.leftMargin: Style.space(5); anchors.verticalCenter: tabLabel.verticalCenter
-                    width: Style.space(6); height: width; radius: width / 2; color: Color.urgent
+                    width: Style.space(6); height: width; radius: width / 2; color: Commons.Color.urgent
                   }
                   Rectangle {
                     objectName: "modelsUpdateDot"
@@ -4179,9 +4180,9 @@ Ui.Panel {
             visible: root.acceptancePreview
             width: parent.width
             height: visible ? previewNoticeContent.implicitHeight + Style.spacing.sm : 0
-            color: Qt.rgba(Color.urgent.r, Color.urgent.g, Color.urgent.b, 0.09)
+            color: Qt.rgba(Commons.Color.urgent.r, Commons.Color.urgent.g, Commons.Color.urgent.b, 0.09)
             border.width: 1
-            border.color: Color.urgent
+            border.color: Commons.Color.urgent
             Column {
               id: previewNoticeContent
               anchors.centerIn: parent
@@ -4194,7 +4195,7 @@ Ui.Panel {
                 text: root.acceptanceSimulation
                   ? "FIXTURE SIMULATION // NO LIVE ACTIONS // " + root.acceptanceSimulationStageLabel()
                   : "ACCEPTANCE PREVIEW // FIXTURE DATA // " + root.acceptancePreviewLabel.toUpperCase() + " // NO LIVE ACTIONS"
-                color: Color.urgent
+                color: Commons.Color.urgent
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
                 font.bold: true
@@ -4212,7 +4213,7 @@ Ui.Panel {
                     ? "Choose the simulated verification outcome"
                     : "Restart before changing the simulated outcome"
                   foreground: root.foreground
-                  accent: root.acceptanceSimulationFailure ? Color.urgent : root.accent
+                  accent: root.acceptanceSimulationFailure ? Commons.Color.urgent : root.accent
                   bordered: true
                   focusable: true
                   enabled: root.acceptanceSimulationStage === "initial" && root.pendingApproval === null
@@ -4254,7 +4255,7 @@ Ui.Panel {
               Row {
                 width: parent.width
                 spacing: Style.spacing.sm
-                Text { textFormat: Text.PlainText; id: onboardingTitleText; width: Math.max(0, parent.width - onboardingActionButton.width - parent.spacing); anchors.verticalCenter: parent.verticalCenter; text: root.onboardingTitle(); color: root.onboardingState === "READY" ? root.accent : (root.onboardingState.indexOf("FAILED") >= 0 || root.onboardingState.indexOf("RECOVERY") >= 0 ? Color.urgent : root.foreground); font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1; wrapMode: Text.Wrap }
+                Text { textFormat: Text.PlainText; id: onboardingTitleText; width: Math.max(0, parent.width - onboardingActionButton.width - parent.spacing); anchors.verticalCenter: parent.verticalCenter; text: root.onboardingTitle(); color: root.onboardingState === "READY" ? root.accent : (root.onboardingState.indexOf("FAILED") >= 0 || root.onboardingState.indexOf("RECOVERY") >= 0 ? Commons.Color.urgent : root.foreground); font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1; wrapMode: Text.Wrap }
                 Ui.Button {
                   id: onboardingActionButton
                   objectName: "onboardingActionButton"
@@ -4914,7 +4915,7 @@ Ui.Panel {
                       anchors.fill: parent
                       text: "Cancel Esc"
                       foreground: root.foreground
-                      accent: Color.urgent
+                      accent: Commons.Color.urgent
                       bordered: true
                       focusable: false
                       hasCursor: cancelApprovalControl.activeFocus
@@ -5056,7 +5057,7 @@ Ui.Panel {
               readonly property bool waitingForOllama: root.onboardingCodes.indexOf("PROVIDER_UNAVAILABLE") >= 0
               readonly property bool waitingForSetup: !root.online && root.novaSetupPending
               text: waitingForSetup ? "LOCAL MODELS // AFTER SETUP" : (waitingForOllama ? "LOCAL MODELS // WAITING FOR OLLAMA" : "LOCAL MODELS // UNAVAILABLE")
-              color: waitingForOllama || waitingForSetup ? root.muted : Color.urgent
+              color: waitingForOllama || waitingForSetup ? root.muted : Commons.Color.urgent
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
               font.letterSpacing: 1
@@ -5111,7 +5112,7 @@ Ui.Panel {
                 }
                 Text { textFormat: Text.PlainText; width: parent.width; visible: root.installedModelsLoading; text: "REFRESHING INSTALLED INVENTORY…"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 1 }
                 Text { textFormat: Text.PlainText; width: parent.width; visible: !root.modelsUnavailable && !root.installedModelsLoading && root.discoveredModels.length === 0; text: "NO MODELS INSTALLED YET"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 1 }
-                Text { textFormat: Text.PlainText; width: parent.width; visible: root.modelsUnavailable; text: "INSTALLED INVENTORY UNAVAILABLE · RETRY REFRESH"; color: Color.urgent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                Text { textFormat: Text.PlainText; width: parent.width; visible: root.modelsUnavailable; text: "INSTALLED INVENTORY UNAVAILABLE · RETRY REFRESH"; color: Commons.Color.urgent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
                 Repeater { model: root.discoveredModels; id: installedModelsRepeater; objectName: "installedModelsRepeater"
                   Item {
                     required property var modelData
@@ -5360,7 +5361,7 @@ Ui.Panel {
                         visible: root.removalStatus !== "" && root.removalStatusModel === modelData.id
                         width: parent.width; wrapMode: Text.Wrap
                         text: root.removalStatus
-                        color: root.removalFailed ? Color.urgent : root.accent
+                        color: root.removalFailed ? Commons.Color.urgent : root.accent
                         font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.6
                       }
                       Rectangle {
@@ -5430,7 +5431,7 @@ Ui.Panel {
                                       Text { textFormat: Text.PlainText; width: parent.width; wrapMode: Text.Wrap
                                              text: modelData.available === true || modelData.running === true ? root.cliSyncShort(modelData)
                                                    : root.cliReasonFor(modelData)
-                                             color: modelData.available !== true && modelData.running !== true ? Color.urgent
+                                             color: modelData.available !== true && modelData.running !== true ? Commons.Color.urgent
                                                     : modelData.project_sync === "will_update" ? root.foreground : root.muted
                                              font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                                     }
@@ -5457,7 +5458,7 @@ Ui.Panel {
                         visible: root.cliStatus !== "" && root.cliStatusModel === modelData.id
                         width: parent.width; wrapMode: Text.Wrap
                         text: root.cliStatus
-                        color: root.cliStatusFailed ? Color.urgent : root.accent
+                        color: root.cliStatusFailed ? Commons.Color.urgent : root.accent
                         font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 1
                       }
                       Column { visible: root.installedModelDetailsOpen(modelData); width: parent.width; spacing: Style.spacing.xxs
@@ -5539,25 +5540,25 @@ Ui.Panel {
                       visible: root.cliStatus !== "" && root.cliStatusModel === modelData.id
                       width: parent.width; wrapMode: Text.Wrap
                       text: root.cliStatus
-                      color: root.cliStatusFailed ? Color.urgent : root.accent
+                      color: root.cliStatusFailed ? Commons.Color.urgent : root.accent
                       font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 1
                     }
                   }
                 }
               }
-              Text { textFormat: Text.PlainText; objectName: "modelSwitchStatusText"; visible: root.modelSwitchStatus !== ""; text: root.modelSwitchStatus; color: root.modelSwitchStatus.indexOf("FAILED") >= 0 || root.modelSwitchStatus === "MODEL UNAVAILABLE" ? Color.urgent : root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.1 }
+              Text { textFormat: Text.PlainText; objectName: "modelSwitchStatusText"; visible: root.modelSwitchStatus !== ""; text: root.modelSwitchStatus; color: root.modelSwitchStatus.indexOf("FAILED") >= 0 || root.modelSwitchStatus === "MODEL UNAVAILABLE" ? Commons.Color.urgent : root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.1 }
               Rectangle {
                 id: globalAcquisitionStatusBadge
                 objectName: "globalAcquisitionStatusBadge"
                 visible: root.acquisitionStatus !== ""
                 width: parent.width
                 height: visible ? globalAcquisitionStatusText.implicitHeight + Style.spacing.sm : 0
-                color: Qt.rgba((root.acquisitionStatus.indexOf("FAILED") >= 0 || root.acquisitionStatus.indexOf("UNAVAILABLE") >= 0 ? Color.urgent : root.accent).r,
-                               (root.acquisitionStatus.indexOf("FAILED") >= 0 || root.acquisitionStatus.indexOf("UNAVAILABLE") >= 0 ? Color.urgent : root.accent).g,
-                               (root.acquisitionStatus.indexOf("FAILED") >= 0 || root.acquisitionStatus.indexOf("UNAVAILABLE") >= 0 ? Color.urgent : root.accent).b, 0.08)
+                color: Qt.rgba((root.acquisitionStatus.indexOf("FAILED") >= 0 || root.acquisitionStatus.indexOf("UNAVAILABLE") >= 0 ? Commons.Color.urgent : root.accent).r,
+                               (root.acquisitionStatus.indexOf("FAILED") >= 0 || root.acquisitionStatus.indexOf("UNAVAILABLE") >= 0 ? Commons.Color.urgent : root.accent).g,
+                               (root.acquisitionStatus.indexOf("FAILED") >= 0 || root.acquisitionStatus.indexOf("UNAVAILABLE") >= 0 ? Commons.Color.urgent : root.accent).b, 0.08)
                 border.width: 1
-                border.color: root.acquisitionStatus.indexOf("FAILED") >= 0 || root.acquisitionStatus.indexOf("UNAVAILABLE") >= 0 ? Color.urgent : Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.52)
-                Text { textFormat: Text.PlainText; id: globalAcquisitionStatusText; anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; anchors.leftMargin: Style.spacing.xs; anchors.rightMargin: Style.spacing.xs; text: root.acquisitionStatus; color: root.acquisitionStatus.indexOf("FAILED") >= 0 || root.acquisitionStatus.indexOf("UNAVAILABLE") >= 0 ? Color.urgent : root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 0.7; wrapMode: Text.Wrap }
+                border.color: root.acquisitionStatus.indexOf("FAILED") >= 0 || root.acquisitionStatus.indexOf("UNAVAILABLE") >= 0 ? Commons.Color.urgent : Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.52)
+                Text { textFormat: Text.PlainText; id: globalAcquisitionStatusText; anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; anchors.leftMargin: Style.spacing.xs; anchors.rightMargin: Style.spacing.xs; text: root.acquisitionStatus; color: root.acquisitionStatus.indexOf("FAILED") >= 0 || root.acquisitionStatus.indexOf("UNAVAILABLE") >= 0 ? Commons.Color.urgent : root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 0.7; wrapMode: Text.Wrap }
               }
               Column {
                 id: downloadCatalog
@@ -5590,7 +5591,7 @@ Ui.Panel {
                   }
                   CompactModelButton { id: addModelButton; objectName: "addModelButton"; anchors.verticalCenter: parent.verticalCenter; text: root.addModelBusy ? "LOOKING UP…" : "ADD"; tooltipText: "Look up this model in Ollama's library; nothing downloads"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: true; enabled: !root.addModelBusy && addModelInput.text.trim() !== ""; onClicked: root.addRequestedModel(addModelInput.text) }
                 }
-                Text { textFormat: Text.PlainText; objectName: "addModelStatusText"; visible: root.addModelStatus !== ""; width: parent.width; wrapMode: Text.Wrap; text: root.addModelStatus; color: root.addModelFailed ? Color.urgent : root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                Text { textFormat: Text.PlainText; objectName: "addModelStatusText"; visible: root.addModelStatus !== ""; width: parent.width; wrapMode: Text.Wrap; text: root.addModelStatus; color: root.addModelFailed ? Commons.Color.urgent : root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                 Item { width: 1; height: Style.spacing.md }
                 Row {
                   spacing: Style.spacing.sm
@@ -5602,7 +5603,7 @@ Ui.Panel {
                   MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.selectorDetailsExpanded = !root.selectorDetailsExpanded }
                 }
                 Column { visible: root.selectorDetailsExpanded; width: parent.width; spacing: Style.spacing.xxs
-                  Text { textFormat: Text.PlainText; width: parent.width; text: root.catalogSummary; color: root.catalogSummary.indexOf("UNAVAILABLE") >= 0 || root.catalogSummary.indexOf("MISMATCH") >= 0 ? Color.urgent : root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.5; wrapMode: Text.Wrap }
+                  Text { textFormat: Text.PlainText; width: parent.width; text: root.catalogSummary; color: root.catalogSummary.indexOf("UNAVAILABLE") >= 0 || root.catalogSummary.indexOf("MISMATCH") >= 0 ? Commons.Color.urgent : root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.5; wrapMode: Text.Wrap }
                   Text { textFormat: Text.PlainText; width: parent.width; text: root.hardwareSummary; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
                   Text { textFormat: Text.PlainText; width: parent.width; text: root.recommendationSummary === "RECOMMEND // INSUFFICIENT EVIDENCE" ? "Recommendations need more evidence before NOVA can suggest a model." : root.recommendationSummary; color: root.recommendationSummary.indexOf("UNAVAILABLE") >= 0 ? root.muted : root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
                 }
@@ -5646,7 +5647,7 @@ Ui.Panel {
                             y: Style.space(2)
                             color: filled ? root.accent : "transparent"
                             border.width: 1; border.color: filled || modelData === "IN USE" ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.35)
-                            Text { textFormat: Text.PlainText; id: catalogTagText; anchors.centerIn: parent; text: parent.modelData; color: parent.filled ? Color.background : (parent.modelData === "IN USE" ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.7)); font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2; font.bold: true; font.letterSpacing: 1 }
+                            Text { textFormat: Text.PlainText; id: catalogTagText; anchors.centerIn: parent; text: parent.modelData; color: parent.filled ? Commons.Color.background : (parent.modelData === "IN USE" ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.7)); font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2; font.bold: true; font.letterSpacing: 1 }
                           }
                         }
                       }
@@ -5662,10 +5663,10 @@ Ui.Panel {
                       visible: root.acquisitionPlainLabel(modelData) !== ""
                       width: parent.width
                       height: visible ? acquisitionStatusBadgeText.implicitHeight + Style.spacing.sm : 0
-                      color: Qt.rgba((warning ? Color.urgent : root.foreground).r, (warning ? Color.urgent : root.foreground).g, (warning ? Color.urgent : root.foreground).b, 0.045)
+                      color: Qt.rgba((warning ? Commons.Color.urgent : root.foreground).r, (warning ? Commons.Color.urgent : root.foreground).g, (warning ? Commons.Color.urgent : root.foreground).b, 0.045)
                       border.width: 1
-                      border.color: warning ? Qt.rgba(Color.urgent.r, Color.urgent.g, Color.urgent.b, 0.65) : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
-                      Text { textFormat: Text.PlainText; id: acquisitionStatusBadgeText; anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; anchors.leftMargin: Style.spacing.xs; anchors.rightMargin: Style.spacing.xs; text: root.acquisitionPlainLabel(modelData); color: acquisitionStatusBadge.warning ? Color.urgent : root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                      border.color: warning ? Qt.rgba(Commons.Color.urgent.r, Commons.Color.urgent.g, Commons.Color.urgent.b, 0.65) : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
+                      Text { textFormat: Text.PlainText; id: acquisitionStatusBadgeText; anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; anchors.leftMargin: Style.spacing.xs; anchors.rightMargin: Style.spacing.xs; text: root.acquisitionPlainLabel(modelData); color: acquisitionStatusBadge.warning ? Commons.Color.urgent : root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
                     }
                     Text { textFormat: Text.PlainText; visible: root.recoveryAllowsRetry(root.acquisitionFor(modelData.catalog_id)); width: parent.width; text: "Previous attempt interrupted · recovery reviewed · fresh approval required"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
                     CompactModelButton {
@@ -5841,7 +5842,7 @@ Ui.Panel {
                       height: Math.max(gpuMemoryNote.implicitHeight, freeGpuMemoryButton.height)
                       Text { textFormat: Text.PlainText; id: gpuMemoryNote; anchors.left: parent.left; anchors.right: freeGpuMemoryButton.left; anchors.rightMargin: Style.spacing.sm; anchors.verticalCenter: parent.verticalCenter; wrapMode: Text.Wrap
                              text: root.removalStatusModel === modelData.id && root.removalStatus !== "" ? root.removalStatus : "unloads by itself 10 min after last use"
-                             color: root.removalStatusModel === modelData.id && root.removalFailed ? Color.urgent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.55); font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                             color: root.removalStatusModel === modelData.id && root.removalFailed ? Commons.Color.urgent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.55); font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                       CompactModelButton {
                         id: freeGpuMemoryButton
                         objectName: "freeGpuMemoryButton"
@@ -5887,7 +5888,7 @@ Ui.Panel {
           Text { textFormat: Text.PlainText; objectName: "chatWaitNotice"; visible: root.chatWaitNotice !== "" && !root.chatBusy && root.pendingApproval === null; width: parent.width; text: root.chatWaitNotice; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
           Text { textFormat: Text.PlainText; objectName: "modelLoadingHint"; visible: root.chatBusy && root.chatLoadsModel && root.effectiveState === "loading_model"; width: parent.width; text: "Loading " + root.modelPlainName(root.activeModel) + " into " + root.memoryWord + ": it was unloaded after 10 idle minutes. This usually takes 10–30 seconds, then NOVA replies."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
           Text { textFormat: Text.PlainText; objectName: "slowFirstReplyHint"; visible: root.slowFirstReply; width: parent.width; text: "Reading your message. The first reply can take a minute, longer on computers without a graphics card."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
-          Text { textFormat: Text.PlainText; visible: root.chatError !== ""; text: root.chatError.toUpperCase(); color: Color.urgent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 0.8; wrapMode: Text.WordWrap; width: parent.width }
+          Text { textFormat: Text.PlainText; visible: root.chatError !== ""; text: root.chatError.toUpperCase(); color: Commons.Color.urgent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 0.8; wrapMode: Text.WordWrap; width: parent.width }
           Row {
             objectName: "chatInputRow"
             visible: root.shownView === "chat"  // the message box lives in CHAT only (2026-10-09)

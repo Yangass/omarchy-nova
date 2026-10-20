@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.14.12
+
+- **Text is readable again after the Qt 6.12 update.** Qt 6.12, which came with Omarchy's
+  October update, added its own `Color`, and it hid the Omarchy theme's colours from NOVA:
+  the panel's text turned black and the bar icon lost its colour. NOVA now asks Omarchy's
+  theme for its colours by their full name, as Omarchy's own shell does.
+
 ## 0.14.11
 
 - **OPEN CLI waits for its model.** A local coding CLI opens on a model that is already

@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui as Ui
 
 Ui.BarWidget {
@@ -278,10 +279,10 @@ Ui.BarWidget {
     bar: root.bar
     // NOVA's own mark (NovaMark.qml), still in the bar; the panel header breathes.
     iconComponent: Component {
-      NovaMark { accent: root.online ? Color.accent : Color.urgent; foreground: Color.bar.text; background: Color.bar.background }
+      NovaMark { accent: root.online ? Commons.Color.accent : Commons.Color.urgent; foreground: Commons.Color.bar.text; background: Commons.Color.bar.background }
     }
     active: root.online
-    activeColor: root.online ? Color.accent : Color.urgent
+    activeColor: root.online ? Commons.Color.accent : Commons.Color.urgent
     tooltipText: root.online ? "NOVA online · CPU " + root.percent(root.cpu) + " · RAM " + root.percent(root.memory) : "NOVA offline · click for details"
     onPressed: function(mouseButton) {
       if (mouseButton === Qt.RightButton) root.refresh()

@@ -34,7 +34,7 @@ QML_CHECK = r'''
         item("setupStepButton").clicked(); wait(30)
         check(launched.length === 1 && launched[0] === "omarchy-launch-floating-terminal-with-presentation " + novaPanel.shellQuote(novaPanel.shellQuote(novaPanel.pluginDir + "/tools/nova-setup.sh")), "command: " + launched[0])
         check(item("setupStepFollow").visible, "follow-up hint missing")
-        check(item("onlineStatusText").text === "SETUP NEEDED" && !Qt.colorEqual(item("onlineStatusText").color, Color.urgent),
+        check(item("onlineStatusText").text === "SETUP NEEDED" && !Qt.colorEqual(item("onlineStatusText").color, Commons.Color.urgent),
               "header still alarms during first setup: " + item("onlineStatusText").text)
       })
       test("copy install with stopped services offers START NOVA", function() {

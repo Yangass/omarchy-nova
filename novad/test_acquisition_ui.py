@@ -243,8 +243,8 @@ class AcquisitionUiContractTests(unittest.TestCase):
         self.assertIn('color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.72)', row)
         self.assertIn('color: row.fraction >= 0.85 ? row.tint : root.foreground', row)
         # Colour warms only near the limit, from theme colours.
-        self.assertIn('if (fraction >= 0.95) return Color.urgent', PANEL)
-        self.assertIn('if (fraction >= 0.85) return Qt.rgba((accent.r + Color.urgent.r) / 2', PANEL)
+        self.assertIn('if (fraction >= 0.95) return Commons.Color.urgent', PANEL)
+        self.assertIn('if (fraction >= 0.85) return Qt.rgba((accent.r + Commons.Color.urgent.r) / 2', PANEL)
 
     def test_chat_marks_nova_replies_and_only_successful_data_sources(self):
         self.assertIn('chatLine.responseStatus === "incomplete" ? "NOVA · INCOMPLETE" : "NOVA"', PANEL)

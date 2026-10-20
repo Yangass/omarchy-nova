@@ -184,8 +184,8 @@ QML_CHECK = r'''
         capture(child("modelSelector"), "details-selector")
       })
       if (@PACKAGED@) {
-        Color.foreground = "#f1dfbf"; Color.background = "#102230"
-        Color.accent = "#77cfc2"; Color.muted = "#a6b5b6"
+        Commons.Color.foreground = "#f1dfbf"; Commons.Color.background = "#102230"
+        Commons.Color.accent = "#77cfc2"; Commons.Color.muted = "#a6b5b6"
         wait(50)
         capture(header, "alternate-header")
         capture(child("modelSelector"), "alternate-selector")

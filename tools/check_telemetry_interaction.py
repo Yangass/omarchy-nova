@@ -64,8 +64,8 @@ QML_CHECK = r'''
       })
       test("colour warms up only near the limit", function() {
         host({gpuAvailable:true, gpu:97, vramUsed:30.9, vramTotal:31.8, memory:88, memoryUsed:26.8, systemTemperature:86})
-        check(Qt.colorEqual(item("telemetryGpuMemory").tint, Color.urgent), "97% memory not urgent")
-        check(!Qt.colorEqual(item("telemetryMemory").tint, novaPanel.accent) && !Qt.colorEqual(item("telemetryMemory").tint, Color.urgent), "88% not warm")
+        check(Qt.colorEqual(item("telemetryGpuMemory").tint, Commons.Color.urgent), "97% memory not urgent")
+        check(!Qt.colorEqual(item("telemetryMemory").tint, novaPanel.accent) && !Qt.colorEqual(item("telemetryMemory").tint, Commons.Color.urgent), "88% not warm")
         host({memory:40, memoryUsed:12.2})
         check(Qt.colorEqual(item("telemetryMemory").tint, novaPanel.accent), "40% not neutral")
         capture("telemetry-hot")

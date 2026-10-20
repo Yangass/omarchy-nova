@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Wayland
 import qs.Commons
+import qs.Commons as Commons
 
 ShellRoot {
   id: shell
@@ -11,8 +12,8 @@ ShellRoot {
     id: previewBar
     property string position: "top"
     property real barSize: 36
-    property color foreground: Color.foreground
-    property color barForeground: Color.foreground
+    property color foreground: Commons.Color.foreground
+    property color barForeground: Commons.Color.foreground
     property string fontFamily: Style.font.family
     property var activePopout: null
     property var clickTargets: []

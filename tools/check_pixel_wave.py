@@ -32,7 +32,7 @@ CHECKS = r'''
       check(done && saved,"capture failed")
     }
     function test_wave() {
-      Color.foreground="#eee4d4";Color.background="#10191d";Color.accent="#7fc6c4";Color.muted="#a8b8b5"
+      Commons.Color.foreground="#eee4d4";Commons.Color.background="#10191d";Commons.Color.accent="#7fc6c4";Commons.Color.muted="#a8b8b5"
       var results=[], metrics={}
       function test(name, fn) {
         try { fn(); results.push({name:name,passed:true}) }
@@ -208,11 +208,11 @@ CHECKS = r'''
         var phase=wave.uPhase,ticks=wave.tickCount
         check(wave.current.energy===.6 && !wave.ticking,"reduced state not applied")
         wait(250);check(wave.uPhase===phase && wave.tickCount===ticks,"reduced state animates")
-        Color.foreground="#e8f3f8";Color.background="#0b1728";Color.accent="#79cee0"
+        Commons.Color.foreground="#e8f3f8";Commons.Color.background="#0b1728";Commons.Color.accent="#79cee0"
         wait(50);capture("blue-reduced")
         novaPanel.settings={reducedMotion:false};wait(100)
         var before=JSON.stringify(wave.current)
-        Color.accent="#b1e38b"
+        Commons.Color.accent="#b1e38b"
         check(JSON.stringify(wave.current)===before,"theme colour jumped")
         wait(2000);check(wave.transitionAge===1800,"theme fade failed")
       })
