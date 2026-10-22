@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.14.14
+
+- **Security hardening (same review):** a registry read now has a time limit for the whole
+  answer, not only for each piece of it, so a server that sends a byte now and then can't
+  keep a model check or ADD A MODEL waiting for hours.
+
 ## 0.14.13
 
 - **Security fix (marketplace review):** reading Ollama's model list can't fill NOVA's

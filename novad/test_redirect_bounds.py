@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import http.server
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -19,6 +20,13 @@ class Server(http.server.BaseHTTPRequestHandler):
     sent = 0
 
     def do_GET(self):
+        if self.path == "/slow":
+            self.send_response(200); self.send_header("Content-Length", "1000"); self.end_headers()
+            try:
+                for _ in range(1000):
+                    self.wfile.write(b"x"); self.wfile.flush(); time.sleep(0.05)
+            except OSError: pass
+            return
         if self.path == "/ok":
             self.send_response(200); self.send_header("Content-Length", "2"); self.end_headers()
             self.wfile.write(b"ok"); return
@@ -57,8 +65,18 @@ class RedirectBounds(unittest.TestCase):
     def test_registry_reads_refuse_a_redirect_away_from_https(self):
         for fetch in (registry_probe.http_get, catalog_repins.manifest_fetch, catalog_repins.probe_fetch):
             with self.subTest(fetch=fetch), self.assertRaises(urllib.error.HTTPError) as caught: fetch(self.url)
-            self.assertEqual(caught.exception.code, 302)
+            self.assertEqual(caught.exception.code, 302); caught.exception.close()
         self.assertLess(Server.sent, ENDLESS)
+
+    def test_a_registry_read_ends_on_time_however_slowly_the_body_comes(self):
+        # A byte every 50 ms never trips the 1 s per-read timeout; the whole read must stop.
+        started = time.monotonic()
+        with self.assertRaises(TimeoutError): registry_probe.http_get(self.url + "slow", timeout=1)
+        self.assertLess(time.monotonic() - started, 3)
+
+    def test_a_registry_read_still_returns_the_whole_body_up_to_its_limit(self):
+        self.assertEqual(registry_probe.http_get(self.url + "ok"), b"ok")
+        self.assertEqual(registry_probe.http_get(self.url + "ok", limit=1), b"o")
 
 
 if __name__ == "__main__":

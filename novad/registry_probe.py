@@ -13,6 +13,7 @@ import hashlib
 import json
 import re
 import struct
+import time
 import urllib.request
 
 import local_socket
@@ -38,9 +39,18 @@ OPENER = urllib.request.build_opener(local_socket.BoundedRedirectHandler(https_o
 
 
 def http_get(url: str, headers: dict[str, str] | None = None, limit: int = 1 << 20, timeout: int = 60) -> bytes:
+    """Up to ``limit`` bytes of ``url``. ``timeout`` bounds the whole body too, not only each
+    socket read: a server sending a byte now and then can't hold a request open for hours."""
     request = urllib.request.Request(url, headers={"User-Agent": "nova-catalog-probe", **(headers or {})})
+    deadline = time.monotonic() + timeout
     with OPENER.open(request, timeout=timeout) as response:
-        return response.read(limit)
+        parts, size = [], 0
+        while size < limit:
+            if time.monotonic() > deadline: raise TimeoutError(f"{url}: no whole answer within {timeout} s")
+            part = response.read1(min(1 << 16, limit - size))
+            if not part: break
+            parts.append(part); size += len(part)
+        return b"".join(parts)
 
 
 class Truncated(Exception):
