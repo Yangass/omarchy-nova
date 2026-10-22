@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.14.13
+
+- **Security fix (marketplace review):** reading Ollama's model list can't fill NOVA's
+  memory. When an address answers with a redirect, Python reads the whole redirect body
+  before following it, before NOVA's 1 MB read limit applies, so a compromised registry
+  or CDN could send an endless one. NOVA now drops a redirect's body unread, follows the
+  registry's redirects only to https, and novad's service has a 1 GB memory cap as a
+  backstop. Thanks again to HANCORE-linux.
+
 ## 0.14.12
 
 - **Text is readable again after the Qt 6.12 update.** Qt 6.12, which came with Omarchy's

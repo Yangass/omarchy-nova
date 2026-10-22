@@ -25,7 +25,6 @@ import re
 import struct
 import tempfile
 import urllib.error
-import urllib.request
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
@@ -47,9 +46,7 @@ def default_store() -> Path:
 
 def _fetch_with_timeout(seconds: int):
     def fetch(url: str, headers: dict[str, str] | None = None, limit: int = 1 << 20) -> bytes:
-        request = urllib.request.Request(url, headers={'User-Agent': 'nova-catalog-probe', **(headers or {})})
-        with urllib.request.urlopen(request, timeout=seconds) as response:
-            return response.read(limit)
+        return registry_probe.http_get(url, headers, limit, timeout=seconds)
     return fetch
 
 

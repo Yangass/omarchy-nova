@@ -10,6 +10,8 @@ Restart=on-failure
 RestartSec=2
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
+# A backstop: whatever goes wrong, novad can't take the desktop's memory with it.
+MemoryMax=1G
 
 [Install]
 WantedBy=default.target

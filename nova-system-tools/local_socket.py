@@ -15,6 +15,11 @@ Ollama listens on 127.0.0.1:11434 like any Ollama. Before NOVA writes a request 
 the kernel's socket table must say the answering end belongs to Ollama's service
 account, root or this user, so a stand-in on that port while Ollama is stopped gets
 nothing (not even the chat message).
+
+Marketplace review 2026-10-22: urllib reads a redirect's whole body before it follows the
+redirect, before any read limit of NOVA's applies, so an address answering with a redirect
+and an endless body could fill the service's memory. NOVA's redirects drop that body
+unread (BoundedRedirectHandler).
 """
 from __future__ import annotations
 
@@ -26,6 +31,8 @@ import socketserver
 import stat
 import struct
 import sys
+import urllib.error
+import urllib.parse
 import urllib.request
 
 NAMES = {"novad": "novad.sock", "nova-system-tools": "system-tools.sock", "nova-actions": "actions.sock"}
@@ -201,11 +208,32 @@ class LoopbackHTTPConnection(http.client.HTTPConnection):
             raise ConnectionRefusedError(f"{theirs[0]}:{theirs[1]} is held by another account")
 
 
+class BoundedRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """urllib's redirects, without reading the redirect's body; https_only also refuses
+    a redirect to anything but https."""
+    max_redirections = 5
+
+    def __init__(self, https_only: bool = False) -> None:
+        self.https_only = https_only
+
+    def http_error_302(self, req, fp, code, msg, headers):
+        fp.close()  # urllib would read() it whole before following the redirect
+        return super().http_error_302(req, fp, code, msg, headers)
+
+    http_error_301 = http_error_303 = http_error_307 = http_error_308 = http_error_302
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if self.https_only and urllib.parse.urlsplit(newurl).scheme != "https":
+            raise urllib.error.HTTPError(newurl, code, "redirect away from https refused", headers, fp)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 class LoopbackHandler(urllib.request.HTTPHandler):
     def http_open(self, request):
         return self.do_open(LoopbackHTTPConnection, request)
 
 
 def check_loopback_peers() -> None:
-    """Send this process's plain-http urllib requests through LoopbackHTTPConnection."""
-    urllib.request.install_opener(urllib.request.build_opener(LoopbackHandler()))
+    """Send this process's plain-http urllib requests through LoopbackHTTPConnection, and
+    its redirects through BoundedRedirectHandler."""
+    urllib.request.install_opener(urllib.request.build_opener(LoopbackHandler(), BoundedRedirectHandler()))

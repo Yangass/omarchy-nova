@@ -15,6 +15,8 @@ import re
 import struct
 import urllib.request
 
+import local_socket
+
 REGISTRY = "https://registry.ollama.ai"
 MANIFEST_ACCEPT = "application/vnd.docker.distribution.manifest.v2+json"
 TAGS = {"general", "coding", "reasoning", "fast", "vision"}
@@ -30,9 +32,14 @@ PARSER_CAPABILITIES = {"qwen3.5": {"tools": True, "thinking": True}}  # verified
 SCALAR = {0: "B", 1: "b", 2: "H", 3: "h", 4: "I", 5: "i", 6: "f", 7: "?", 10: "Q", 11: "q", 12: "d"}
 
 
-def http_get(url: str, headers: dict[str, str] | None = None, limit: int = 1 << 20) -> bytes:
+# Registry blobs redirect to a CDN: follow redirects only to https and without reading the
+# redirect's body, so ``limit`` bounds every read (marketplace review 2026-10-22).
+OPENER = urllib.request.build_opener(local_socket.BoundedRedirectHandler(https_only=True))
+
+
+def http_get(url: str, headers: dict[str, str] | None = None, limit: int = 1 << 20, timeout: int = 60) -> bytes:
     request = urllib.request.Request(url, headers={"User-Agent": "nova-catalog-probe", **(headers or {})})
-    with urllib.request.urlopen(request, timeout=60) as response:
+    with OPENER.open(request, timeout=timeout) as response:
         return response.read(limit)
 
 
