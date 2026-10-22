@@ -52,6 +52,7 @@ MAX_TOOL_RESPONSE_BYTES = 32_768
 MAX_TOOL_ROUNDS = 8
 MAX_TOOL_CALLS_PER_ROUND = 8
 APPROVAL_TTL_SECONDS = 120
+THINKING_HEARTBEAT_SECONDS = 5
 # How long Ollama keeps NOVA's model in GPU memory after the last request
 # (Konstantin, 2026-10-08: 10 minutes, so games and video editing get it back).
 OLLAMA_KEEP_ALIVE = "10m"
@@ -160,6 +161,27 @@ def local_model_fit() -> dict[str, Any]:
     result = fit_response(collect_profile(available), models, observed, runtime_available)
     if not available: result['error'] = 'provider_unavailable'
     return result
+
+# The working context NOVA runs each model with (2026-10-22: a friend's qwen3:8b ran at
+# Ollama's 4096 default because nothing asked for more). The fit's recommendation: the
+# model's own maximum, at most the policy's 32K, and only what fits this GPU's memory. A
+# tailored build with its own num_ctx keeps it. Worked out once per model and process.
+CHAT_CONTEXTS: dict[str, int | None] = {}
+
+def chat_context(model_id: str) -> int | None:
+    if model_id not in CHAT_CONTEXTS:
+        context = None
+        try:
+            names = {model_id, model_id if ":" in model_id else model_id + ":latest"}
+            row = next((item for item in local_model_fit().get("models", []) if item.get("id") in names), None)
+            if row and not (row.get("metadata") or {}).get("own_context"):
+                value = (row.get("fit") or {}).get("recommended_context")
+                context = value if type(value) is int and value > 0 else None
+        except Exception: context = None
+        CHAT_CONTEXTS[model_id] = context
+    return CHAT_CONTEXTS[model_id]
+
+PROVIDERS["ollama"].context_for = chat_context
 
 def local_recommendations(query: str) -> dict[str, Any]:
     """Read existing local catalog/fit snapshots and return advisory policy output."""
@@ -690,16 +712,23 @@ def tool_result(name: Any, arguments: Any) -> tuple[str, dict[str, Any]]:
 class OllamaFailure(Exception): pass
 class SelfRestart(Exception): pass
 
-def stream_model_turn(messages: list[dict[str, Any]], on_token: Callable[[str], None] | None, provider_id: str, model_id: str) -> dict[str, Any]:
+def stream_model_turn(messages: list[dict[str, Any]], on_token: Callable[[str], None] | None, provider_id: str, model_id: str, on_thinking: Callable[[], None] | None = None) -> dict[str, Any]:
     try: available = any(item["id"] == model_id and item["available"] for item in PROVIDERS[provider_id].models())
     except (KeyError, ProviderUnavailable): available = False
     if not available: raise OllamaFailure("Active model is unavailable.")
     def content(text: str) -> None:
         if on_token: RUNTIME.set("generating"); on_token(text)
-    try: return PROVIDERS[provider_id].stream_chat(model_id, messages, MODEL_TOOLS, lambda: RUNTIME.set("thinking"), content)
+    # A model can think for minutes without writing; a heartbeat now and then tells the
+    # panel the reply is alive (its timeout counts from the last line it received).
+    last_beat = [0.0]
+    def thinking() -> None:
+        RUNTIME.set("thinking")
+        now = time.monotonic()
+        if on_thinking and now - last_beat[0] >= THINKING_HEARTBEAT_SECONDS: last_beat[0] = now; on_thinking()
+    try: return PROVIDERS[provider_id].stream_chat(model_id, messages, MODEL_TOOLS, thinking, content)
     except ProviderUnavailable as error: raise OllamaFailure(str(error)) from error
 
-def run_agent_loop(user_message: str, on_token: Callable[[str], None] | None = None, on_tool: Callable[[str], None] | None = None, on_data_source: Callable[[dict[str, str]], None] | None = None, on_approval: Callable[[dict[str, str]], None] | None = None, on_action: Callable[[dict[str, Any]], None] | None = None, history: tuple[ChatTurn, ...] = ()) -> str:
+def run_agent_loop(user_message: str, on_token: Callable[[str], None] | None = None, on_tool: Callable[[str], None] | None = None, on_data_source: Callable[[dict[str, str]], None] | None = None, on_approval: Callable[[dict[str, str]], None] | None = None, on_action: Callable[[dict[str, Any]], None] | None = None, history: tuple[ChatTurn, ...] = (), on_thinking: Callable[[], None] | None = None) -> str:
     provider_id, model_id = ACTIVE_PROVIDER, ACTIVE_MODEL
     if not has_active_selection():
         raise OllamaFailure("A local model must be selected and verified before chat can start.")
@@ -710,7 +739,7 @@ def run_agent_loop(user_message: str, on_token: Callable[[str], None] | None = N
     messages.append({"role": "user", "content": user_message})
     for round_number in range(MAX_TOOL_ROUNDS):
         RUNTIME.set("loading_model" if round_number == 0 else "thinking")
-        assistant = stream_model_turn(messages, on_token, provider_id, model_id)
+        assistant = stream_model_turn(messages, on_token, provider_id, model_id, on_thinking)
         calls = assistant["tool_calls"]
         if not calls: return assistant["content"]
         messages.append(assistant)
@@ -751,7 +780,7 @@ def run_agent_loop(user_message: str, on_token: Callable[[str], None] | None = N
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "novad/0.14.14"
+    server_version = "novad/0.14.15"
     def log_message(self, _format: str, *_args: Any) -> None: return
     def send_json(self, status: HTTPStatus, payload: dict[str, Any]) -> bool:
         # Ends with a newline: the panel reads the socket line by line (BarWidget.novaRequest).
@@ -1084,7 +1113,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if not self.send_sse_headers(): RUNTIME.set("idle"); return
             try:
-                answer = run_agent_loop(message, lambda text: self.send_sse("token", {"text": text}), lambda name: self.send_sse("status", {"state": "tool_call", "tool": name}), lambda item: self.send_sse("data_source", item), lambda item: self.send_sse("approval_required", item), lambda item: self.send_sse("action_result", item), history=history)
+                answer = run_agent_loop(message, lambda text: self.send_sse("token", {"text": text}), lambda name: self.send_sse("status", {"state": "tool_call", "tool": name}), lambda item: self.send_sse("data_source", item), lambda item: self.send_sse("approval_required", item), lambda item: self.send_sse("action_result", item), history=history, on_thinking=lambda: self.send_sse("status", {"state": "thinking"}))
                 if not isinstance(answer, str) or not answer.strip(): raise OllamaFailure("Model returned an empty response.")
                 terminal = {"done": True}
                 if session_turn is not None: terminal["session_id"], terminal["turn_id"] = session_turn.session_id, session_turn.turn_id

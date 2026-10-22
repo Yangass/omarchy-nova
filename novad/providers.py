@@ -1,6 +1,7 @@
 """Provider-neutral model control-plane types and the local Ollama adapter."""
 from __future__ import annotations
 import json
+import re
 from threading import Lock
 import time
 import urllib.error
@@ -65,6 +66,9 @@ class OllamaProvider:
         self._fit_cache = {}
         self._fit_lock = Lock()
         self._chat_capabilities: dict[str, frozenset[str]] = {}
+        # The working context NOVA runs a model with (novad sets it: the fit's recommendation);
+        # None leaves Ollama's default (4096 for most library models) or the model's own num_ctx.
+        self.context_for: Callable[[str], int | None] | None = None
     def _json(self, path: str, timeout: int = 3) -> tuple[int, dict[str, Any]]:
         try:
             with urllib.request.urlopen(self.base_url + path, timeout=timeout) as response:
@@ -137,11 +141,20 @@ class OllamaProvider:
                 if isinstance(capabilities, list):
                     model['capabilities'].update(chat='completion' in capabilities,
                         tools='tools' in capabilities, thinking='thinking' in capabilities, vision='vision' in capabilities)
+                # A tailored build (a Modelfile with its own num_ctx) keeps its context.
+                own = re.search(r'(?m)^num_ctx\s+(\d+)\s*$', details['parameters']) if isinstance(details.get('parameters'), str) else None
+                metadata['own_context'] = int(own.group(1)) if own else None
                 if details.get('remote_model') or details.get('remote_host'):
                     model['local'] = False
                 metadata['fit_metadata_source'] = 'ollama/api/show' if info else 'ollama/api/tags; details unavailable'
         return [model for model in models if model.get('local') and model.get('installed')]
 
+    def _context_options(self, model: str) -> dict[str, Any]:
+        """{"options": {"num_ctx": N}} for NOVA's working context, or {} to leave it be.
+        Load and chat must agree, or Ollama reloads the model to change it."""
+        try: context = self.context_for(model) if self.context_for else None
+        except Exception: context = None
+        return {"options": {"num_ctx": context}} if type(context) is int and context > 0 else {}
     def running_models(self, timeout: int = 3) -> list[dict[str, Any]]:
         status,payload=self._json("/api/ps",timeout)
         if status != HTTPStatus.OK: raise ProviderUnavailable("Ollama runtime state is unavailable.")
@@ -151,7 +164,7 @@ class OllamaProvider:
     def preload(self, model: str, timeout: int) -> dict[str, Any]:
         # Ollama's canonical empty-chat preload initializes the model without
         # creating a user-visible conversation turn.
-        result=self._post_json("/api/chat",{"model":model,"messages":[],"stream":False,"keep_alive":self.keep_alive},timeout)
+        result=self._post_json("/api/chat",{"model":model,"messages":[],"stream":False,"keep_alive":self.keep_alive,**self._context_options(model)},timeout)
         returned=result.get("model")
         if result.get("done") is not True or returned != model: raise ProviderOperationFailed("Ollama did not confirm the requested model identity.")
         if not self.is_loaded(model,10): raise ProviderOperationFailed("Ollama did not report the requested model as loaded.")
@@ -205,7 +218,7 @@ class OllamaProvider:
     def _stream_chat_once(self, model, messages, tools, think, on_thinking, on_content) -> dict[str, Any]:
         # Cap one reply's length: with context shifting a looping model never stops.
         cap = MAX_THINKING_REPLY_TOKENS if think else MAX_REPLY_TOKENS
-        payload={"model":model,"stream":True,"keep_alive":self.keep_alive,"messages":messages,"options":{"num_predict":cap}}
+        payload={"model":model,"stream":True,"keep_alive":self.keep_alive,"messages":messages,"options":{"num_predict":cap,**self._context_options(model).get("options",{})}}
         if think: payload["think"]=True
         if tools: payload["tools"]=tools
         request=urllib.request.Request(self.base_url+"/api/chat",data=json.dumps(payload,separators=(",",":")).encode(),method="POST",headers={"Content-Type":"application/json"})

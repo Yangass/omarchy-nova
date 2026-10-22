@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.yangass.nova",
   "name": "NOVA",
-  "version": "0.14.14",
+  "version": "0.14.15",
   "author": "Konstantin Tarasevic",
   "license": "MIT",
   "description": "All your local AI models in one place, without the terminal: NOVA shows which models fit your hardware, installs the one you pick, tells you when a newer build is out and updates it with your approval, and gives you a private chat in the top bar.",

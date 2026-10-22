@@ -45,7 +45,7 @@ Scope {
     return bytes
   }
   function request() {
-    var r = { readyState: 0, status: 0, statusText: "", responseText: "", timeout: 0,
+    var r = { readyState: 0, status: 0, statusText: "", responseText: "", timeout: 0, timeoutIsIdle: false,
               onreadystatechange: null, onload: null, onerror: null, ontimeout: null,
               _method: "GET", _path: "/", _headers: [], _body: "", _socket: null, _deadline: 0,
               _connected: false, _sent: false, _done: false, _timedOut: false,
@@ -101,6 +101,8 @@ Scope {
       }
       r.responseText += text + "\n"
       r._received += client.utf8Length(text) + 1
+      // A stream that is still talking hasn't timed out (chat: an approval can wait 120 s).
+      if (r.timeoutIsIdle && r.timeout > 0) r._deadline = Date.now() + r.timeout
       r.readyState = 3; changed()
       if (r._length >= 0 && r._received >= r._length) r._finish(false)
     }

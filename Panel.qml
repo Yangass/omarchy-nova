@@ -3185,6 +3185,7 @@ Ui.Panel {
     var xhr = root.novaRequest()
     var offset = 0
     var buffer = ""
+    var pendingEvent = "message"
     var streamDone = false
     function currentRequest() {
       return requestSerial === activeChatRequestSerial
@@ -3206,21 +3207,25 @@ Ui.Panel {
       if (response.length <= offset) return
       buffer += response.slice(offset)
       offset = response.length
-      var splitAt = -1
-      while ((splitAt = buffer.indexOf("\n\n")) >= 0) {
-        var frame = buffer.slice(0, splitAt)
-        buffer = buffer.slice(splitAt + 2)
-        var event = "message"
-        var data = ""
-        var lines = frame.split("\n")
-        for (var index = 0; index < lines.length; index++) {
-          if (lines[index].indexOf("event:") === 0) event = lines[index].slice(6).trim()
-          else if (lines[index].indexOf("data:") === 0) data += lines[index].slice(5).trim()
-        }
+      // novad's events are an "event:" line and one "data:" line (single-line JSON). Act on
+      // the data line itself: Quickshell's line reader holds an empty line back until more
+      // bytes arrive, so waiting for the blank line that ends a frame left the last event of
+      // every burst unhandled: an approval request until it expired, the final done for good
+      // (a friend's install, 2026-10-22: "NOVA · INCOMPLETE", approvals that never showed).
+      var newline = -1
+      while ((newline = buffer.indexOf("\n")) >= 0) {
+        var line = buffer.slice(0, newline)
+        buffer = buffer.slice(newline + 1)
+        if (line.indexOf("event:") === 0) { pendingEvent = line.slice(6).trim(); continue }
+        if (line.indexOf("data:") !== 0) { if (line === "") pendingEvent = "message"; continue }
+        var event = pendingEvent
+        var data = line.slice(5).trim()
+        pendingEvent = "message"
         try {
           var payload = JSON.parse(data)
           if (event === "token" && typeof payload.text === "string") { root.applyStreamState("generating", ""); appendAssistantText(payload.text) }
           else if (event === "status" && payload.state === "tool_call") root.applyStreamState("tool_call", payload.tool)
+          else if (event === "status" && payload.state === "thinking") root.applyStreamState("thinking", "")
           else if (event === "data_source") root.addDataSource(payload)
           else if (event === "approval_required") root.requestApproval(payload)
           else if (event === "action_result") root.handleActionResult(payload)
@@ -3260,7 +3265,10 @@ Ui.Panel {
     root.openNova(xhr, "POST", "/chat/stream")
     xhr.setRequestHeader("Content-Type", "application/json")
     xhr.setRequestHeader("Accept", "text/event-stream")
+    // Counted from the last line novad sent: an approval waits up to 120 s, and novad
+    // sends a thinking heartbeat while a model thinks without writing.
     xhr.timeout = 190000
+    xhr.timeoutIsIdle = true
     xhr.send(JSON.stringify({ message: message, session_id: requestSessionId }))
   }
   // Run 6 (2026-10-10): Enter while the model was still loading or being checked did

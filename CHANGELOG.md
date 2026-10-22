@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.14.15
+
+- **Chat replies finish, and approvals show up.** A reply ended with "NOVA · INCOMPLETE" and
+  "novad stream ended early" although its text was all there, and a request that needed your
+  approval (such as opening an app) never showed its card and expired after two minutes. The
+  panel waited for the empty line that ends each message from NOVA's service, and the shell
+  hands over an empty line only when more text follows, so the last message of each burst
+  waited: the approval until it expired, the end of the reply for good. Every message now
+  counts as soon as its data arrives. Found on a friend's new install; thanks for the reports.
+- **A reply's time limit counts from the last thing NOVA's service sent**, so a slow approval
+  or a model that thinks for a long time no longer cuts the reply short (NOVA's service now
+  says "still thinking" every few seconds).
+- **Models get the working context NOVA estimated for them.** NOVA showed an estimate (for
+  example 32K) but never asked Ollama for it, so models ran with Ollama's default of 4096
+  tokens and lost the start of longer conversations. Now NOVA loads and chats with the model's
+  own maximum, up to 32K, as far as it fits your graphics card. A model you built with its own
+  context size keeps it.
+
 ## 0.14.14
 
 - **Security hardening (same review):** a registry read now has a time limit for the whole
