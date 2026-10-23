@@ -57,6 +57,7 @@ QML_CHECK = r'''
       novaPanel.onboardingSnapshotFresh = true; novaPanel.onboardingReceivedAt = Date.now()
       novaPanel.onboardingExplicitSelection = true
       novaPanel.onboardingSelectedProvider = "ollama"; novaPanel.onboardingSelectedModel = "fixture:model"
+      novaPanel.setPanelView("chat")  // another check may have left MODELS as the saved view
       ;["long", "approval"].forEach(function(kind) {
         seen = ({})
         var started = Date.now()

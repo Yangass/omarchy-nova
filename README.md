@@ -30,6 +30,12 @@ already, NOVA still saves you the guesswork and the upkeep.
   hardware first.
 - **Gives you a chat in the top bar.** Answers stream in; NOVA knows it's on Omarchy
   and can look up live information about your machine when you ask.
+- **A coding assistant on your own model.** Omarchy installs OpenCode; **SET UP CODING
+  CLI** on a model's card connects it in one approval (a build of that model with the
+  right working context, made from the files you have: no download). It asks before it
+  edits files or runs commands. **TUNE** shows how much working context fits your graphics
+  card and warns before a setting that would make it slow; the assistant can also ask NOVA
+  for more context itself, and you decide.
 - **Shows what your machine is doing.** CPU, graphics, memory, disk, network, and which
   model is currently loaded, with one click to free its memory.
 - **Never does anything behind your back.** Every download, deletion, restart or app
@@ -118,9 +124,9 @@ No account, no telemetry. And on your computer:
   models run on the processor: slower, but small models work fine.
 - **More models:** anything from [Ollama's library](https://ollama.com/library) can be
   added under **ADD A MODEL**; NOVA checks it the same way before you install.
-- **Coding CLI (advanced):** NOVA can open a coding assistant in a terminal that uses
-  a local model. It needs a setup file, so the **OPEN CLI** button only appears once
-  one exists; a guided setup is planned.
+- **Coding CLI:** **SET UP CODING CLI** on a model's card connects OpenCode in one
+  approval. Your own OpenCode settings stay as they are: NOVA hands over its settings only
+  when it opens OpenCode. Other coding CLIs can be added in `~/.config/nova/cli-profiles.json`.
 - **How it works inside:** [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md). Security
   details and how to report a problem: [SECURITY.md](SECURITY.md).
 

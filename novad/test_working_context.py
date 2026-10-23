@@ -1,7 +1,9 @@
 """NOVA runs each model with its working context (2026-10-22: a friend's qwen3:8b ran at
 Ollama's 4096 default because NOVA never asked for more)."""
 import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import providers
@@ -72,6 +74,9 @@ class ServerContextTests(unittest.TestCase):
     def fit(self, rows):
         server.CHAT_CONTEXTS.clear()
         self.addCleanup(server.CHAT_CONTEXTS.clear)
+        # Never the user's real tailored builds (a coding CLI build changes chat's context).
+        builds = patch.object(server, "CLI_BUILDS", server.coding_cli.Builds(Path(tempfile.mkdtemp(dir="/var/tmp")) / "builds.json"))
+        builds.start(); self.addCleanup(builds.stop)
         return patch.object(server, "local_model_fit", return_value={"models": rows})
 
     def test_the_fit_recommendation_is_the_working_context(self):

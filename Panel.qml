@@ -418,6 +418,54 @@ Ui.Panel {
       catch (error) { }
     }
   }
+  // 0.15: NOVA's welcome in chat, once (also once for people who already have a model): what
+  // it set up, the working context and why, things to try, and the coding CLI. NOVA's own
+  // words from novad's numbers, not the model talking.
+  property string welcomePath: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/nova/panel-welcome.json"
+  property bool welcomeSeen: false
+  property bool welcomeRead: false
+  property var welcomeData: null
+  FileView {
+    id: welcomeFile
+    path: root.acceptancePreview ? "" : root.welcomePath
+    printErrors: false
+    onLoaded: { try { root.welcomeSeen = JSON.parse(text()).seen === true } catch (error) { root.welcomeSeen = false } root.welcomeRead = true }
+    onLoadFailed: { root.welcomeSeen = false; root.welcomeRead = true }
+  }
+  readonly property bool welcomeWanted: !acceptancePreview && welcomeRead && !welcomeSeen && onboardingState === "READY" && activeModel !== ""
+  readonly property bool welcomeVisible: welcomeWanted && welcomeData !== null && welcomeData.model === activeModel
+  onWelcomeWantedChanged: if (welcomeWanted && (!welcomeData || welcomeData.model !== activeModel)) loadWelcome()
+  function loadWelcome() {
+    var model = activeModel
+    novaJson("GET", "/cli/setup?model=" + encodeURIComponent(model), null, 10000, function(status, payload) {
+      welcomeData = status === 200 && payload.model ? payload : { model: model }
+      // The card names the model as Ollama lists it; the bar may say it without ":latest".
+      if (welcomeData.model !== model) welcomeData = Object.assign({}, welcomeData, { model: model, listed: welcomeData.model })
+    })
+  }
+  function markWelcomeSeen() {
+    welcomeSeen = true
+    if (!acceptancePreview) welcomeFile.setText(JSON.stringify({ version: 1, seen: true }) + "\n")
+  }
+  function welcomeTry(prompt) {
+    markWelcomeSeen()
+    if (!chatInput) return
+    chatInput.text = prompt
+    sendChat()
+  }
+  function welcomeSetUpCli() {
+    markWelcomeSeen()
+    showView("models")
+    openCliSetup({ id: welcomeData && welcomeData.listed ? welcomeData.listed : activeModel })
+  }
+  function welcomeContextLine() {
+    if (!welcomeData || !welcomeData.context) return ""
+    var line = "Working context " + contextLabel(welcomeData.context) + " · how much conversation it keeps in mind"
+    if (welcomeData.numbers && welcomeData.verdict)
+      line += " (its maximum is " + contextLabel(welcomeData.numbers.native_context) + "; " + contextLabel(welcomeData.context) + " leaves "
+        + gibLabel(welcomeData.verdict.spare_bytes) + " of graphics memory for your desktop)"
+    return line + ". Replies stay on this computer; nothing goes online."
+  }
   function catalogAttention() {
     for (var i = 0; i < catalogModels.length; ++i) {
       var model = catalogModels[i]
@@ -1230,7 +1278,7 @@ Ui.Panel {
     var payload = null
     try { payload = status === 200 ? JSON.parse(body) : null } catch (error) { payload = null }
     if (payload && typeof payload === "object" && Array.isArray(payload.models)) {
-      discoveredModels = payload.models
+      discoveredModels = payload.models.filter(function(item) { return !(item && item.tailored_for) })
       modelsUnavailable = false
       // Run 6: "Freed … loads again when it's next used" stayed under "IN MEMORY" after
       // the model loaded again. An unload note lasts until the model is back in memory.
@@ -2428,6 +2476,176 @@ Ui.Panel {
   property bool cliStatusIsReason: false  // cliStatus explains an unavailable CLI (not a launch result)
   property bool cliStatusFailed: false
   property bool cliLaunchUnconfirmed: false  // cliStatus says NOVA could not confirm the terminal yet
+  // 0.15 (Konstantin, 2026-10-22): a coding CLI for every user (novad/coding_cli.py). A model's
+  // card offers SET UP CODING CLI (OpenCode on the model's tailored build, one approval) and,
+  // once set up, TUNE: the working context with a live graphics-memory meter and plain warnings.
+  // The CLI can also ask NOVA for a change itself; that approval arrives through the bar's /state.
+  property string cliSetupModel: ""
+  property var cliSetupState: null
+  property string cliSetupProject: ""
+  property string cliSetupCare: "ask"
+  property string cliSetupError: ""
+  property bool cliSetupBusy: false
+  property string cliTuneModel: ""
+  property var cliTuneState: null
+  property int cliTuneIndex: 0
+  property bool cliTuneConfirm: false
+  property bool cliTuneBusy: false
+  property string cliTuneError: ""
+  property var cliApprovalsShown: ({})
+  // Words carry every verdict; colours only help (some themes map "urgent" to green).
+  // Secondary text inside the tinted 0.15 cards (the theme's muted grey is too faint there).
+  readonly property color cardSoftText: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.62)
+  readonly property color cliTightColor: "#d9a441"
+  readonly property color cliPastColor: "#b48ef0"
+  readonly property var cliFallbackSteps: [4096, 8192, 12288, 16384, 24576, 32768, 40960, 49152, 65536, 98304, 131072]
+  function contextLabel(tokens) { return typeof tokens === "number" && tokens > 0 ? Math.round(tokens / 1024) + "K" : "unknown" }
+  function gibLabel(bytes) { return (Math.abs(bytes) / 1073741824).toFixed(1) + " GiB" }
+  function openCodeProfile(item) {
+    if (!cliState || !item || !Array.isArray(cliState.profiles)) return null
+    for (var i = 0; i < cliState.profiles.length; ++i) {
+      var profile = cliState.profiles[i]
+      if (profile && profile.kind === "opencode" && profile.model === item.id) return profile
+    }
+    return null
+  }
+  // novad/coding_cli.py verdict(), for the live meter.
+  function cliVerdict(numbers, tokens) {
+    if (!numbers || !(tokens > 0)) return null
+    var need = numbers.weights_bytes + numbers.runtime_bytes + numbers.fixed_cache_bytes + tokens * numbers.kv_bytes_per_token
+    var spare = numbers.budget_bytes - need
+    var level = spare < 0 ? "spills" : (spare < numbers.tight_margin_bytes ? "tight" : "fits")
+    var past = tokens > numbers.native_context
+    var text = level === "spills" ? "DOESN'T FIT · " + gibLabel(spare) + " would spill into system memory. Replies get several times slower, and the desktop may stutter while it runs."
+      : (level === "tight" ? "TIGHT · only " + gibLabel(spare) + " of graphics memory left for the desktop and other apps; video, games or another model may stutter."
+      : "FITS · " + gibLabel(need) + " of " + gibLabel(numbers.budget_bytes) + ", " + gibLabel(spare) + " to spare.")
+    if (past) text += "\nPAST WHAT IT WAS TRAINED FOR (" + contextLabel(numbers.native_context) + ") · it starts to lose track of long conversations and code."
+    return { level: level, past: past, need: need, spare: spare, text: text }
+  }
+  function verdictColor(level, past) { return level === "spills" ? destructiveColor : (level === "tight" || level === "unknown" ? cliTightColor : (past ? cliPastColor : accent)) }
+  function novaJson(method, path, value, timeout, done) {
+    var xhr = root.novaRequest(), finished = false
+    function finish(status, text) {
+      if (finished) return
+      finished = true
+      var payload = null
+      try { payload = text ? JSON.parse(text) : null } catch (error) { payload = null }
+      done(status, payload && typeof payload === "object" ? payload : ({}))
+    }
+    xhr.onreadystatechange = function() { if (xhr.readyState === XMLHttpRequest.DONE) finish(xhr.status, xhr.responseText) }
+    xhr.onerror = function() { finish(0, "") }
+    xhr.ontimeout = function() { finish(0, "") }
+    try {
+      root.openNova(xhr, method, path)
+      if (value) xhr.setRequestHeader("Content-Type", "application/json")
+      xhr.timeout = timeout
+      xhr.send(value ? JSON.stringify(value) : undefined)
+    } catch (error) { finish(0, "") }
+  }
+  function openCliSetup(item) {
+    cliTuneModel = ""; cliSetupModel = item.id; cliSetupState = null; cliSetupError = ""; cliSetupCare = "ask"; cliSetupProject = ""
+    if (acceptancePreview) return
+    novaJson("GET", "/cli/setup?model=" + encodeURIComponent(item.id), null, 10000, function(status, payload) {
+      if (cliSetupModel !== item.id) return
+      if (status !== 200) { cliSetupError = "NOVA couldn't prepare the setup (" + String(payload.error || "no answer").replace(/_/g, " ") + ")."; return }
+      cliSetupState = payload
+      cliSetupProject = Array.isArray(payload.projects) && payload.projects.length ? payload.projects[0] : ""
+    })
+  }
+  function cliSetupTool() {
+    var tools = cliSetupState && Array.isArray(cliSetupState.tools) ? cliSetupState.tools : []
+    for (var i = 0; i < tools.length; ++i) if (tools[i] && tools[i].id === "opencode") return tools[i]
+    return null
+  }
+  function proposeCliSetup() {
+    var tool = cliSetupTool()
+    if (!cliSetupState || cliSetupBusy || cliSetupProject === "" || !tool || tool.available !== true || pendingApproval) return
+    cliSetupBusy = true; cliSetupError = ""
+    var model = cliSetupModel
+    novaJson("POST", "/cli/setup/proposals", { model: model, tool: "opencode", project: cliSetupProject, care: cliSetupCare }, 15000, function(status, payload) {
+      cliSetupBusy = false
+      if (status === 201 && typeof payload.id === "string") {
+        cliSetupModel = ""
+        var shown = cliApprovalsShown; shown[payload.id] = true; cliApprovalsShown = shown
+        beginApproval(payload)
+        return
+      }
+      cliSetupError = ({tool_unavailable: "OpenCode isn't on this computer. Omarchy installs it; run Omarchy's update, then try again.",
+                        project_unavailable: "That folder isn't available any more. Choose another."})[payload.error]
+        || ("Setup couldn't start: " + String(payload.error || "no answer").replace(/_/g, " ") + ".")
+    })
+  }
+  function cliTuneSteps() {
+    return cliTuneState && cliTuneState.numbers && Array.isArray(cliTuneState.numbers.steps) ? cliTuneState.numbers.steps : cliFallbackSteps
+  }
+  function cliTuneTokens() { var steps = cliTuneSteps(); return steps[Math.max(0, Math.min(steps.length - 1, cliTuneIndex))] }
+  function cliTuneVerdict() { return cliTuneState ? cliVerdict(cliTuneState.numbers, cliTuneTokens()) : null }
+  function openCliTune(item) {
+    cliSetupModel = ""; cliTuneModel = item.id; cliTuneState = null; cliTuneConfirm = false; cliTuneError = ""
+    if (acceptancePreview) return
+    novaJson("GET", "/cli/tune?model=" + encodeURIComponent(item.id), null, 10000, function(status, payload) {
+      if (cliTuneModel !== item.id) return
+      if (status !== 200) { cliTuneError = "NOVA couldn't read this model's settings (" + String(payload.error || "no answer").replace(/_/g, " ") + ")."; return }
+      cliTuneState = payload
+      cliTuneIndex = Math.max(0, cliTuneSteps().indexOf(payload.context))
+    })
+  }
+  function cliTuneRecommended() {
+    if (!cliTuneState) return
+    cliTuneIndex = Math.max(0, cliTuneSteps().indexOf(cliTuneState.recommended_context)); cliTuneConfirm = false
+  }
+  function saveCliTune(confirmed) {
+    var tokens = cliTuneTokens(), verdict = cliTuneVerdict()
+    if (!cliTuneState || !tokens || cliTuneBusy) return
+    // Anything but a plain fit (or a model NOVA can't check) asks first.
+    if (!confirmed && (!verdict || verdict.level !== "fits" || verdict.past)) { cliTuneConfirm = true; return }
+    cliTuneBusy = true; cliTuneError = ""
+    var model = cliTuneModel
+    novaJson("POST", "/cli/tune", { model: model, context: tokens }, 130000, function(status, payload) {
+      cliTuneBusy = false
+      if (status === 200) {
+        cliTuneModel = ""; cliTuneConfirm = false
+        cliStatusModel = model; cliStatusFailed = false; cliStatusIsReason = false; cliLaunchUnconfirmed = false
+        cliStatus = "Working context " + contextLabel(tokens) + ". The coding CLI uses it from its next message, and chat follows."
+        refreshCliProfiles()
+        return
+      }
+      cliTuneError = "Couldn't change it: " + String(payload.detail || payload.error || "no answer").replace(/_/g, " ") + ". Nothing changed."
+    })
+  }
+  // The bar polls /state; a request the coding CLI made shows here (and opens the panel: the
+  // user is waiting in the terminal). One answered on the other screen leaves this one.
+  function considerCodingCliApproval(item) {
+    if (pendingApproval && pendingApproval.coding_cli && pendingApproval.action === "coding_cli_tune" && !pendingApproval.decision
+        && (!item || item.id !== pendingApproval.id)) clearPendingApproval()
+    if (!item || typeof item.id !== "string" || item.coding_cli !== true || cliApprovalsShown[item.id] || pendingApproval || acceptancePreview) return
+    var shown = cliApprovalsShown; shown[item.id] = true; cliApprovalsShown = shown
+    beginApproval(item)
+    if (!opened) open()
+  }
+  Connections {
+    target: root.hostWidget
+    ignoreUnknownSignals: true
+    function onCodingCliApprovalChanged() { root.considerCodingCliApproval(root.hostWidget.codingCliApproval) }
+  }
+  function finishCodingCliDecision(next, decision, status, payload) {
+    clearPendingApproval()
+    var outcome = payload && typeof payload.status === "string" ? payload.status : ""
+    if (status === 200 && outcome === "set_up") {
+      approvalFeedback = "Coding CLI set up: OPEN CLI on " + modelPlainName(next.model) + " opens OpenCode in your folder. Its first start may download OpenCode."
+      refreshCliProfiles()
+      cliStatusModel = next.model; cliStatus = "Set up · OPEN CLI opens OpenCode (" + contextLabel(payload.context) + " working context)."; cliStatusFailed = false; cliStatusIsReason = false
+      // The approval took the panel to CHAT; the result (and OPEN CLI) is on the model's card.
+      showView("models")
+    } else if (status === 200 && outcome === "changed") approvalFeedback = "Working context is now " + contextLabel(payload.context) + ". The coding CLI uses it from its next message."
+    else if (status === 200 && outcome === "denied") approvalFeedback = "Declined. Nothing changed."
+    else if (status === 200 && outcome === "failed") approvalFeedback = "It didn't work (" + String(payload.error || "unknown").slice(0, 120) + "). Nothing else changed."
+    else if (status === 410) approvalFeedback = "This request expired. Nothing changed."
+    else if (status === 409) approvalFeedback = "This request was already answered."
+    else approvalFeedback = "Decision failed" + (payload && typeof payload.error === "string" ? ": " + payload.error.replace(/_/g, " ") : "") + "."
+    applyStreamState("idle", "")
+    restoreChatInputFocus()
+  }
   function refreshCliProfiles() {
     if (acceptancePreview) return
     var xhr = root.novaRequest()
@@ -2768,7 +2986,7 @@ Ui.Panel {
     else approveApprovalControl.forceActiveFocus()
   }
   function decideApproval(decision) {
-    if (!pendingApproval || (decision !== "approve" && decision !== "deny")) return
+    if (!pendingApproval || (decision !== "approve" && decision !== "deny" && !(decision === "alternative" && pendingApproval.coding_cli && pendingApproval.alternative_context))) return
     if (pendingApproval.recovery) { decideRecovery(decision); return }
     if (pendingApproval.decision) return
     approvalExpiryTimer.stop()
@@ -2829,6 +3047,7 @@ Ui.Panel {
     var next = JSON.parse(JSON.stringify(pendingApproval)), payload = ({})
     try { payload = JSON.parse(body) } catch (error) { }
     if (next.removal) { finishRemovalDecision(next, decision, status, payload); return }
+    if (next.coding_cli) { finishCodingCliDecision(next, decision, status, payload); return }
     if (status === 202 && next.acquisition) {
       clearPendingApproval()
       if (decision === "approve") {
@@ -3316,6 +3535,7 @@ Ui.Panel {
     }
     chatWaitNotice = ""; chatSendWhenReadyUntil = 0
     var message = chatInput.text.trim()
+    if (welcomeVisible) markWelcomeSeen()
     if (!chatSessionId) createChatSession(message, true)
     else startChatRequest(message)
   }
@@ -4843,8 +5063,18 @@ Ui.Panel {
                 interactive: contentHeight > height
                 Column {
                 id: approvalColumn; width: parent.width; spacing: Style.spacing.xs
-                Text { textFormat: Text.PlainText; objectName: "approvalTitle"; text: root.pendingApproval && root.pendingApproval.recovery ? "RECOVERY REVIEW" : (root.pendingApproval && root.pendingApproval.removal ? "DELETE APPROVAL" : (root.pendingApproval && root.pendingApproval.update ? "UPDATE APPROVAL" : (root.pendingApproval && root.pendingApproval.acquisition ? "INSTALL APPROVAL" : "ACTION REQUEST"))); color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.2 }
-                Text { textFormat: Text.PlainText; text: root.pendingApproval ? root.pendingApproval.summary : "ACTION"; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; font.bold: true }
+                Text { textFormat: Text.PlainText; objectName: "approvalTitle"; text: root.pendingApproval && root.pendingApproval.recovery ? "RECOVERY REVIEW" : (root.pendingApproval && root.pendingApproval.coding_cli ? "CODING CLI APPROVAL" : "") || (root.pendingApproval && root.pendingApproval.removal ? "DELETE APPROVAL" : (root.pendingApproval && root.pendingApproval.update ? "UPDATE APPROVAL" : (root.pendingApproval && root.pendingApproval.acquisition ? "INSTALL APPROVAL" : "ACTION REQUEST"))); color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.2 }
+                Text { textFormat: Text.PlainText; text: root.pendingApproval ? root.pendingApproval.summary : "ACTION"; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; font.bold: true; width: parent.width; wrapMode: Text.Wrap }
+                // 0.15: a coding CLI change lists exactly what changes, then how it fits.
+                Text { textFormat: Text.PlainText; objectName: "approvalChanges"; visible: !!(root.pendingApproval && root.pendingApproval.coding_cli && Array.isArray(root.pendingApproval.changes) && root.pendingApproval.changes.length)
+                       width: parent.width; wrapMode: Text.Wrap
+                       text: visible ? root.pendingApproval.changes.map(function(line, index) { return (index + 1) + ". " + line }).join("\n") : ""
+                       color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption; lineHeight: 1.15 }
+                Text { textFormat: Text.PlainText; objectName: "approvalVerdict"; visible: !!(root.pendingApproval && root.pendingApproval.coding_cli && root.pendingApproval.verdict && root.pendingApproval.verdict.text)
+                       width: parent.width; wrapMode: Text.Wrap; font.bold: true
+                       text: visible ? root.pendingApproval.verdict.text : ""
+                       color: visible ? root.verdictColor(root.pendingApproval.verdict.level, root.pendingApproval.verdict.past_native) : root.muted
+                       font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                 Text { visible: !!(root.pendingApproval && root.pendingApproval.recovery === true); width: parent.width; text: root.recoveryAssessmentText(); textFormat: Text.PlainText; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; wrapMode: Text.Wrap }
                 Text { textFormat: Text.PlainText; visible: !!(root.pendingApproval && root.pendingApproval.recovery === true); width: parent.width; text: "Check other terminals, model clients and automation for downloads. Empty model residency does not establish download inactivity. Do not confirm if uncertain."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
                 Text { textFormat: Text.PlainText; visible: !!(root.pendingApproval && root.pendingApproval.target); text: "TARGET  " + (root.pendingApproval ? root.pendingApproval.target : ""); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
@@ -4953,7 +5183,7 @@ Ui.Panel {
                     Ui.Button {
                       id: approveApprovalButton
                       anchors.fill: parent
-                      text: "Approve ↵"
+                      text: (root.pendingApproval && root.pendingApproval.approve_label ? root.pendingApproval.approve_label : "Approve") + " ↵"
                       selected: true
                       foreground: root.foreground
                       accent: root.accent
@@ -4969,6 +5199,14 @@ Ui.Panel {
                       cursorShape: Qt.PointingHandCursor
                       onClicked: root.decideApproval("approve")
                     }
+                  }
+                  Ui.Button {
+                    // 0.15: the CLI asked for more than fits; this is the most that does.
+                    objectName: "alternativeApprovalButton"
+                    text: root.pendingApproval && root.pendingApproval.alternative_label ? root.pendingApproval.alternative_label : ""
+                    visible: !!(root.pendingApproval && root.pendingApproval.coding_cli && root.pendingApproval.alternative_context && !root.pendingApproval.decision)
+                    focusable: true; foreground: root.foreground; accent: root.accent; bordered: true
+                    onClicked: root.decideApproval("alternative")
                   }
                   Ui.Button {
                     id: reviewRecoveryAgainControl
@@ -5023,6 +5261,50 @@ Ui.Panel {
             objectName: "chatLines"
             width: chatViewport.width
             spacing: Style.spacing.sm
+            // 0.15: NOVA's welcome (mock previews/v015-first-run, state 1).
+            Item {
+              objectName: "welcomeCard"
+              visible: root.welcomeVisible
+              width: parent.width
+              height: visible ? welcomeColumn.implicitHeight + 2 * Style.spacing.sm : 0
+              Rectangle { anchors.fill: parent; color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.05); border.width: 1; border.color: root.accent }
+              Column {
+                id: welcomeColumn
+                x: Style.spacing.sm; y: Style.spacing.sm; width: parent.width - 2 * Style.spacing.sm
+                spacing: Style.spacing.xs
+                readonly property var tool: root.welcomeData && Array.isArray(root.welcomeData.tools) ? root.welcomeData.tools.filter(function(t) { return t && t.id === "opencode" })[0] : null
+                readonly property bool offerCli: !!(tool && tool.available === true) && root.openCodeProfile({ id: root.welcomeData && root.welcomeData.listed ? root.welcomeData.listed : root.activeModel }) === null
+                Text { textFormat: Text.PlainText; text: "NOVA · WELCOME"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.4 }
+                Text { textFormat: Text.PlainText; width: parent.width; wrapMode: Text.Wrap
+                       text: "Hi, I'm NOVA. " + root.modelPlainName(root.activeModel) + " is ready" + (root.welcomeData && root.welcomeData.gpu ? " on your " + root.welcomeData.gpu : "") + ", and everything stays on this computer."
+                       color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall }
+                Text { textFormat: Text.PlainText; objectName: "welcomeContext"; visible: text !== ""; width: parent.width; wrapMode: Text.Wrap; text: root.welcomeContextLine()
+                       color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.7); font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                Text { textFormat: Text.PlainText; text: "Things to try:"; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                Repeater {
+                  model: [["What's taking space on my disk?", "reads your disk usage"], ["Open a terminal on workspace 5", "asks your approval first"], ["Why is my CPU busy right now?", "reads the system monitor"]]
+                  CompactModelButton {
+                    required property var modelData
+                    objectName: "welcomeTryButton"
+                    text: modelData[0] + "  · " + modelData[1]
+                    foreground: root.foreground; accent: root.accent; bordered: true; focusable: true
+                    enabled: !root.chatBusy && !root.pendingApproval
+                    onClicked: root.welcomeTry(modelData[0])
+                  }
+                }
+                Text { textFormat: Text.PlainText; visible: welcomeColumn.offerCli; text: "CODE WITH IT IN A TERMINAL"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.2 }
+                Text { textFormat: Text.PlainText; visible: welcomeColumn.offerCli; width: parent.width; wrapMode: Text.Wrap
+                       text: "Omarchy installed OpenCode for you. I can connect it to " + root.modelPlainName(root.activeModel) + " so you can work on code with your own model: it reads and edits files in a project folder and asks before it runs anything."
+                       color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                Flow {
+                  width: parent.width; spacing: Style.spacing.xxs
+                  CompactModelButton { objectName: "welcomeSetUpCliButton"; visible: welcomeColumn.offerCli; text: "SET UP CODING CLI"; selected: true; foreground: root.foreground; accent: root.accent; bordered: true; focusable: visible; onClicked: root.welcomeSetUpCli() }
+                  CompactModelButton { objectName: "welcomeDismissButton"; text: welcomeColumn.offerCli ? "NOT NOW" : "GOT IT"; foreground: root.muted; accent: root.accent; bordered: !welcomeColumn.offerCli; focusable: true; onClicked: root.markWelcomeSeen() }
+                }
+                Text { textFormat: Text.PlainText; visible: welcomeColumn.offerCli; width: parent.width; wrapMode: Text.Wrap; text: "Any time later: MODELS → " + root.modelPlainName(root.activeModel) + " → SET UP CODING CLI."
+                       color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 1 }
+              }
+            }
             Repeater {
               objectName: "chatHistoryRepeater"
               model: chatHistoryModel
@@ -5221,6 +5503,25 @@ Ui.Panel {
                           Accessible.name: text + " " + modelData.id
                           Accessible.description: tooltipText
                           onClicked: launchable ? root.beginCliLaunch(modelData) : root.explainCliUnavailable(modelData)
+                        }
+                        CompactModelButton {
+                          objectName: "setUpCodingCliButton"
+                          visible: modelData !== null && typeof modelData !== "undefined" && modelData.provider === "ollama"
+                            && modelData.available === true && root.cliState !== null && root.openCodeProfile(modelData) === null
+                          text: root.cliSetupModel === modelData.id ? "CLOSE SETUP" : "SET UP CODING CLI"
+                          tooltipText: "Connect OpenCode (Omarchy installs it) to " + modelData.id + ": one approval, nothing downloaded by NOVA"
+                          foreground: root.foreground; accent: root.accent; bordered: true; focusable: visible
+                          Accessible.name: text + " " + modelData.id
+                          onClicked: root.cliSetupModel === modelData.id ? root.cliSetupModel = "" : root.openCliSetup(modelData)
+                        }
+                        CompactModelButton {
+                          objectName: "tuneCodingCliButton"
+                          visible: modelData !== null && typeof modelData !== "undefined" && root.openCodeProfile(modelData) !== null
+                          text: root.cliTuneModel === modelData.id ? "CLOSE TUNE" : "TUNE"
+                          tooltipText: "The coding CLI's working context, with what fits your graphics card"
+                          foreground: root.foreground; accent: root.accent; bordered: true; focusable: visible
+                          Accessible.name: text + " " + modelData.id
+                          onClicked: root.cliTuneModel === modelData.id ? root.cliTuneModel = "" : root.openCliTune(modelData)
                         }
                         CompactModelButton {
                           id: installedModelDetailsButton
@@ -5458,6 +5759,211 @@ Ui.Panel {
                             CompactModelButton { objectName: "cliConfirmLaunch"; selected: true; text: "LAUNCH [ENTER]"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: cliConfirmCard.visible; enabled: cliConfirmCard.visible && root.cliChosenCanLaunch(modelData); Accessible.name: "Launch coding CLI for " + modelData.id; onClicked: root.confirmCliLaunch(modelData) }
                             CompactModelButton { objectName: "cliConfirmCancel"; text: "CANCEL [ESC]"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: cliConfirmCard.visible; Accessible.name: "Cancel opening the coding CLI"; onClicked: root.cancelCliLaunch() }
                           }
+                        }
+                      }
+                      Text {
+                        textFormat: Text.PlainText
+                        objectName: "codingCliLine"
+                        readonly property var profile: root.openCodeProfile(modelData)
+                        visible: profile !== null
+                        width: parent.width; wrapMode: Text.Wrap
+                        text: profile ? "CODING CLI · OpenCode · " + (profile.project_place || profile.project_label) + " · " + root.contextLabel(profile.context)
+                          + " · " + (profile.care === "edits" ? "asks before commands" : "asks before edits and commands") : ""
+                        color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.55)
+                        font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.4
+                      }
+                      // 0.15: SET UP CODING CLI (mock previews/v015-first-run, state 2).
+                      Item {
+                        objectName: "codingCliSetupCard"
+                        visible: root.cliSetupModel === modelData.id
+                        width: parent.width
+                        height: visible ? setupColumn.implicitHeight + 2 * Style.spacing.sm : 0
+                        Rectangle { anchors.fill: parent; color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.07); border.width: 1; border.color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.5) }
+                        Column {
+                          id: setupColumn
+                          x: Style.spacing.sm; y: Style.spacing.sm; width: parent.width - 2 * Style.spacing.sm
+                          spacing: Style.spacing.xs
+                          readonly property var tool: root.cliSetupState ? root.cliSetupTool() : null
+                          Text { textFormat: Text.PlainText; text: "SET UP A CODING CLI"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.2 }
+                          Text { textFormat: Text.PlainText; visible: !root.cliSetupState && root.cliSetupError === ""; text: "Checking this computer…"; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                          Text { textFormat: Text.PlainText; visible: !!root.cliSetupState; width: parent.width; wrapMode: Text.Wrap
+                                 text: !setupColumn.tool ? "" : setupColumn.tool.available === true
+                                   ? "OpenCode · a full-screen coding agent: it plans, edits files and runs tests in one folder." + (setupColumn.tool.downloads_on_first_start ? " Its first start downloads it (Omarchy's installer; the terminal shows the progress)." : "")
+                                   : "OpenCode isn't on this computer. Omarchy installs it; run Omarchy's update, then open this again."
+                                 color: setupColumn.tool && setupColumn.tool.available === true ? root.foreground : root.destructiveColor; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                          Text { textFormat: Text.PlainText; visible: !!root.cliSetupState; text: "PROJECT FOLDER · IT WORKS ONLY INSIDE THIS FOLDER"; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 1; font.letterSpacing: 1 }
+                          Flow {
+                            visible: !!root.cliSetupState; width: parent.width; spacing: Style.spacing.xxs
+                            Repeater {
+                              model: root.cliSetupState && Array.isArray(root.cliSetupState.projects) ? root.cliSetupState.projects : []
+                              CompactModelButton {
+                                required property var modelData
+                                objectName: "codingCliProjectButton"
+                                text: modelData; selected: root.cliSetupProject === modelData
+                                foreground: root.foreground; accent: root.accent; bordered: true; focusable: true
+                                onClicked: root.cliSetupProject = modelData
+                              }
+                            }
+                          }
+                          Text { textFormat: Text.PlainText; visible: !!root.cliSetupState && !(root.cliSetupState.projects && root.cliSetupState.projects.length); width: parent.width; wrapMode: Text.Wrap
+                                 text: "No folder found in your home folder. Make one for your code (for example ~/Code), then open this again."; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                          Text { textFormat: Text.PlainText; visible: !!root.cliSetupState; text: "HOW CAREFUL"; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 1; font.letterSpacing: 1 }
+                          Flow {
+                            visible: !!root.cliSetupState; width: parent.width; spacing: Style.spacing.xxs
+                            CompactModelButton { objectName: "codingCliCareAsk"; text: "ASK BEFORE EDITS AND COMMANDS"; selected: root.cliSetupCare === "ask"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: true; onClicked: root.cliSetupCare = "ask" }
+                            CompactModelButton { objectName: "codingCliCareEdits"; text: "EDIT FREELY, ASK BEFORE COMMANDS"; selected: root.cliSetupCare === "edits"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: true; onClicked: root.cliSetupCare = "edits" }
+                          }
+                          Text { textFormat: Text.PlainText; visible: !!root.cliSetupState; width: parent.width; wrapMode: Text.Wrap
+                                 text: root.cliSetupCare === "ask" ? "You see each change and command first. Recommended to start." : "Faster for real work; commands still need your yes."
+                                 color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                          Text { textFormat: Text.PlainText; visible: !!root.cliSetupState; width: parent.width; wrapMode: Text.Wrap
+                                 text: root.cliSetupState ? "MODEL · " + root.cliSetupState.build + " · " + modelData.id + " with a " + root.contextLabel(root.cliSetupState.context) + " working context, made from the files you have (no download)" : ""
+                                 color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                          Text { textFormat: Text.PlainText; objectName: "codingCliSetupVerdict"; visible: !!(root.cliSetupState && root.cliSetupState.verdict); width: parent.width; wrapMode: Text.Wrap; font.bold: true
+                                 text: visible ? root.cliSetupState.verdict.text : ""
+                                 color: visible ? root.verdictColor(root.cliSetupState.verdict.level, root.cliSetupState.verdict.past_native) : root.muted
+                                 font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                          Text { textFormat: Text.PlainText; visible: root.cliSetupError !== ""; width: parent.width; wrapMode: Text.Wrap; text: root.cliSetupError; color: root.destructiveColor; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                          Flow {
+                            width: parent.width; spacing: Style.spacing.xxs
+                            CompactModelButton {
+                              objectName: "codingCliSetUpButton"
+                              text: root.cliSetupBusy ? "ASKING…" : "SET UP"
+                              selected: true; foreground: root.foreground; accent: root.accent; bordered: true; focusable: true
+                              enabled: !!(setupColumn.tool && setupColumn.tool.available === true) && root.cliSetupProject !== "" && !root.cliSetupBusy && !root.pendingApproval
+                              opacity: enabled ? 1 : 0.5
+                              onClicked: root.proposeCliSetup()
+                            }
+                            CompactModelButton { text: "CANCEL"; foreground: root.muted; accent: root.accent; bordered: false; focusable: true; onClicked: root.cliSetupModel = "" }
+                          }
+                        }
+                      }
+                      // 0.15: TUNE (mock state 5): the working context with a live graphics-memory meter.
+                      Item {
+                        objectName: "codingCliTuneCard"
+                        visible: root.cliTuneModel === modelData.id
+                        width: parent.width
+                        height: visible ? tuneColumn.implicitHeight + 2 * Style.spacing.sm : 0
+                        Rectangle { anchors.fill: parent; color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.07); border.width: 1; border.color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.5) }
+                        Column {
+                          id: tuneColumn
+                          x: Style.spacing.sm; y: Style.spacing.sm; width: parent.width - 2 * Style.spacing.sm
+                          spacing: Style.spacing.xs
+                          readonly property var numbers: root.cliTuneState ? root.cliTuneState.numbers : null
+                          readonly property int tokens: root.cliTuneTokens()
+                          readonly property var verdict: root.cliTuneVerdict()
+                          readonly property var steps: root.cliTuneSteps()
+                          Text { textFormat: Text.PlainText; width: parent.width; wrapMode: Text.Wrap
+                                 text: "TUNE · " + (root.cliTuneState ? root.cliTuneState.build : "") + " · THE CODING CLI'S MODEL"
+                                 color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.2 }
+                          Text { textFormat: Text.PlainText; visible: !root.cliTuneState && root.cliTuneError === ""; text: "Reading its settings…"; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                          Text { textFormat: Text.PlainText; visible: !!root.cliTuneState; text: "WORKING CONTEXT · HOW MUCH CODE AND CONVERSATION IT KEEPS IN MIND"; width: parent.width; wrapMode: Text.Wrap; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 1; font.letterSpacing: 1 }
+                          Row {
+                            visible: !!root.cliTuneState; spacing: Style.spacing.sm
+                            Text { textFormat: Text.PlainText; id: tuneValueText; objectName: "codingCliTuneValue"; text: root.contextLabel(tuneColumn.tokens); color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall + 8 }
+                            Text { textFormat: Text.PlainText; anchors.baseline: tuneValueText.baseline
+                                   text: root.cliTuneState ? "recommended " + root.contextLabel(root.cliTuneState.recommended_context) + " · now " + root.contextLabel(root.cliTuneState.context) : ""
+                                   color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                          }
+                          Ui.PanelSlider {
+                            objectName: "codingCliTuneSlider"
+                            visible: !!root.cliTuneState
+                            width: parent.width
+                            minimum: 0; maximum: Math.max(1, tuneColumn.steps.length - 1); step: 1; integer: true
+                            tickCount: tuneColumn.steps.length
+                            value: root.cliTuneIndex
+                            fillColor: tuneColumn.verdict ? root.verdictColor(tuneColumn.verdict.level, tuneColumn.verdict.past) : root.accent
+                            knobColor: root.foreground
+                            onMoved: function(value) { root.cliTuneIndex = Math.round(value); root.cliTuneConfirm = false }
+                            onReleased: function(value) { root.cliTuneIndex = Math.round(value) }
+                          }
+                          // One label under each tick; ▲ marks what the model was trained for.
+                          Item {
+                            id: tuneTicks
+                            visible: !!root.cliTuneState
+                            width: parent.width; height: visible ? Style.font.caption + 2 : 0
+                            readonly property real knob: Math.max(14, Math.round(Style.spacing.controlHeight * 0.38))
+                            Repeater {
+                              model: tuneColumn.steps
+                              Text {
+                                required property var modelData
+                                required property int index
+                                textFormat: Text.PlainText
+                                // Only every other label when they would crowd; the native one always.
+                                visible: tuneColumn.steps.length <= 9 || index % 2 === 0 || (tuneColumn.numbers && modelData === tuneColumn.numbers.native_context)
+                                text: root.contextLabel(modelData) + (tuneColumn.numbers && modelData === tuneColumn.numbers.native_context ? "▲" : "")
+                                x: Math.max(0, Math.min(tuneTicks.width - implicitWidth, tuneTicks.width * index / Math.max(1, tuneColumn.steps.length - 1) - implicitWidth / 2))
+                                color: tuneColumn.numbers && modelData === tuneColumn.numbers.native_context ? root.cliPastColor : root.cardSoftText
+                                font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2
+                              }
+                            }
+                          }
+                          // The meter: model, context cache and runtime against what the card can give.
+                          Item {
+                            objectName: "codingCliMeter"
+                            visible: !!(root.cliTuneState && tuneColumn.numbers && tuneColumn.verdict)
+                            width: parent.width; height: Style.space(12)
+                            readonly property real total: visible ? Math.max(tuneColumn.numbers.budget_bytes, tuneColumn.verdict.need) * 1.04 : 1
+                            function part(bytes) { return width * Math.max(0, bytes) / total }
+                            Rectangle { anchors.fill: parent; color: "transparent"; border.width: 1; border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.25) }
+                            Row {
+                              anchors.fill: parent; anchors.margins: 1
+                              Rectangle { height: parent.height; width: parent.parent.visible ? parent.parent.part(tuneColumn.numbers.weights_bytes) : 0; color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.45) }
+                              Rectangle { height: parent.height; width: parent.parent.visible ? parent.parent.part(tuneColumn.tokens * tuneColumn.numbers.kv_bytes_per_token + tuneColumn.numbers.fixed_cache_bytes) : 0
+                                          color: tuneColumn.verdict ? root.verdictColor(tuneColumn.verdict.level, tuneColumn.verdict.past) : root.accent }
+                              Rectangle { height: parent.height; width: parent.parent.visible ? parent.parent.part(tuneColumn.numbers.runtime_bytes) : 0; color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.3) }
+                            }
+                            Rectangle { visible: parent.visible; x: parent.visible ? parent.part(tuneColumn.numbers.budget_bytes) : 0; y: -2; width: 2; height: parent.height + 4; color: root.foreground }
+                          }
+                          Text { textFormat: Text.PlainText; visible: !!(tuneColumn.numbers && tuneColumn.verdict); width: parent.width; wrapMode: Text.Wrap
+                                 text: visible ? "model " + root.gibLabel(tuneColumn.numbers.weights_bytes) + " · context " + root.gibLabel(tuneColumn.tokens * tuneColumn.numbers.kv_bytes_per_token)
+                                   + " · runtime " + root.gibLabel(tuneColumn.numbers.runtime_bytes) + " · │ what the " + (root.cliTuneState.gpu || "graphics card") + " can give: " + root.gibLabel(tuneColumn.numbers.budget_bytes) : ""
+                                 color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 1 }
+                          Text { textFormat: Text.PlainText; objectName: "codingCliTuneVerdict"; visible: !!root.cliTuneState; width: parent.width; wrapMode: Text.Wrap; font.bold: true
+                                 text: tuneColumn.verdict ? tuneColumn.verdict.text : "NOVA can't estimate graphics memory for this model, so it can't warn you. Change it only if you know it fits."
+                                 color: tuneColumn.verdict ? root.verdictColor(tuneColumn.verdict.level, tuneColumn.verdict.past) : root.cliTightColor
+                                 font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                          // Are you sure? (risky settings only)
+                          Item {
+                            objectName: "codingCliTuneConfirm"
+                            visible: root.cliTuneConfirm
+                            width: parent.width; height: visible ? confirmColumn.implicitHeight + 2 * Style.spacing.xs : 0
+                            Rectangle { anchors.fill: parent; color: "transparent"; border.width: 1; border.color: tuneColumn.verdict && tuneColumn.verdict.level === "spills" ? root.destructiveColor : root.cliTightColor }
+                            Column {
+                              id: confirmColumn
+                              x: Style.spacing.xs; y: Style.spacing.xs; width: parent.width - 2 * Style.spacing.xs; spacing: Style.spacing.xxs
+                              Text { textFormat: Text.PlainText; width: parent.width; wrapMode: Text.Wrap; font.bold: true
+                                     text: "ARE YOU SURE? · " + root.contextLabel(tuneColumn.tokens) + " " + (!tuneColumn.verdict ? "can't be checked on this model" : tuneColumn.verdict.level === "spills" ? "doesn't fit your graphics card" : tuneColumn.verdict.level === "tight" ? "leaves very little graphics memory" : "goes past what the model was trained for")
+                                     color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                              Text { textFormat: Text.PlainText; width: parent.width; wrapMode: Text.Wrap; text: "You can always go back: TUNE → BACK TO RECOMMENDED, or ask the CLI to undo it."; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                              Flow {
+                                width: parent.width; spacing: Style.spacing.xxs
+                                CompactModelButton { objectName: "codingCliKeepButton"; text: "KEEP " + root.contextLabel(root.cliTuneState ? root.cliTuneState.context : 0); selected: true; foreground: root.foreground; accent: root.accent; bordered: true; focusable: true
+                                                     onClicked: { root.cliTuneIndex = Math.max(0, tuneColumn.steps.indexOf(root.cliTuneState.context)); root.cliTuneConfirm = false } }
+                                CompactModelButton { objectName: "codingCliAnywayButton"; text: "USE " + root.contextLabel(tuneColumn.tokens) + " ANYWAY"; foreground: tuneColumn.verdict && tuneColumn.verdict.level === "spills" ? root.destructiveColor : root.cliTightColor
+                                                     accent: root.accent; bordered: true; focusable: true; onClicked: root.saveCliTune(true) }
+                              }
+                            }
+                          }
+                          Text { textFormat: Text.PlainText; visible: root.cliTuneError !== ""; width: parent.width; wrapMode: Text.Wrap; text: root.cliTuneError; color: root.destructiveColor; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                          Flow {
+                            visible: !!root.cliTuneState && !root.cliTuneConfirm; width: parent.width; spacing: Style.spacing.xxs
+                            CompactModelButton {
+                              objectName: "codingCliSaveButton"
+                              readonly property bool plain: !!(tuneColumn.verdict && tuneColumn.verdict.level === "fits" && !tuneColumn.verdict.past)
+                              text: root.cliTuneBusy ? "SAVING…" : (plain ? "SAVE" : "SAVE ANYWAY…")
+                              selected: plain; foreground: plain ? root.foreground : (tuneColumn.verdict && tuneColumn.verdict.level === "spills" ? root.destructiveColor : root.cliTightColor)
+                              accent: root.accent; bordered: true; focusable: true
+                              enabled: !root.cliTuneBusy && !!root.cliTuneState && tuneColumn.tokens !== root.cliTuneState.context
+                              opacity: enabled ? 1 : 0.5
+                              onClicked: root.saveCliTune(false)
+                            }
+                            CompactModelButton { objectName: "codingCliRecommendedButton"; text: "BACK TO RECOMMENDED"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: true; onClicked: root.cliTuneRecommended() }
+                            CompactModelButton { text: "CANCEL"; foreground: root.muted; accent: root.accent; bordered: false; focusable: true; onClicked: root.cliTuneModel = "" }
+                          }
+                          Text { textFormat: Text.PlainText; visible: !!root.cliTuneState; width: parent.width; wrapMode: Text.Wrap
+                                 text: "Saving rebuilds " + (root.cliTuneState ? root.cliTuneState.build : "") + " in a few seconds (no download). An open CLI uses it from its next message; NOVA's chat follows, so both share one copy in memory."
+                                 color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 1 }
                         }
                       }
                       Text {

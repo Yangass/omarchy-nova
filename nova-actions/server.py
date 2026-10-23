@@ -28,6 +28,14 @@ CLI_PROFILES_PATH = Path.home() / ".config" / "nova" / "cli-profiles.json"
 # When each coding CLI profile was last launched (picker default, "last opened" in its row).
 CLI_LAST_USED_PATH = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "nova" / "cli-last-used.json"
 CLI_TOOLS = {"qwen-code"}
+# 0.15: OpenCode on a local model (NOVA's tailored build), set up in one approval in the panel.
+# NOVA's settings reach it at launch only (OPENCODE_CONFIG_CONTENT); the user's own stay put.
+OPENCODE_CARE = {"ask": {"edit": "ask", "bash": "ask"}, "edits": {"edit": "allow", "bash": "ask"}}
+OPENCODE_BUILD = re.compile(r"nova-[a-z0-9][a-z0-9.-]{0,80}-cli")
+NOVA_MCP = Path(__file__).resolve().parent / "nova_mcp.py"
+# Tells the model about NOVA's two tools: OpenCode 2 offers MCP tools inside its code
+# runtime, where a model doesn't always look for them on its own (2026-10-23, live test).
+NOVA_INSTRUCTIONS = Path(__file__).resolve().parent / "opencode-instructions.md"
 ONLINE_CLI_TOOLS = {"claude-code": "claude", "codex": "codex"}
 # Omarchy tags TUI.* windows as terminals (default/hypr/apps/terminals.lua), so its
 # universal copy/paste (Super+C/V) sends Ctrl+Insert/Shift+Insert instead of Ctrl+C/V.
@@ -149,6 +157,16 @@ def _online_command_available(path: Path, binary: str) -> bool:
             and not info.st_mode & (stat.S_IWGRP | stat.S_IWOTH) and bool(info.st_mode & stat.S_IXUSR))
 def validate_cli_profile(item: Any) -> tuple[dict[str, Any] | None, str | None]:
     if not isinstance(item, dict): return None, "invalid_profile"
+    if item.get("tool") == "opencode":
+        fields = {"id", "label", "tool", "provider", "model", "build", "command", "project", "project_label", "care"}
+        if set(item) != fields or not all(isinstance(item[key], str) and item[key] for key in fields): return None, "invalid_profile"
+        if not CLI_PROFILE_ID.fullmatch(item["id"]) or len(item["label"]) > 80 or len(item["project_label"]) > 80 or len(item["model"]) > 200: return None, "invalid_profile"
+        if item["provider"] != "ollama": return None, "unsupported_provider"
+        if item["care"] not in OPENCODE_CARE or not OPENCODE_BUILD.fullmatch(item["build"]): return None, "invalid_profile"
+        if not _online_command_available(Path(item["command"]), "opencode"): return None, "command_unavailable"
+        project = Path(item["project"])
+        if not project.is_absolute() or not _cli_owned_path(project, directory=True): return None, "project_unavailable"
+        return dict(item), None
     if item.get("provider") == "online":
         fields = {"id", "label", "tool", "provider", "command", "project", "project_label"}
         if set(item) != fields or not all(isinstance(item[key], str) and item[key] for key in fields): return None, "invalid_profile"
@@ -303,6 +321,9 @@ def list_cli_profiles() -> dict[str, Any]:
         if raw.get("provider") == "online":
             public = {key: raw.get(key) for key in ("id", "label", "tool", "provider", "project_label") if isinstance(raw.get(key), str)}
             public.update(kind="online", valid=profile is not None, error=problem, running=False, project_sync="not_applicable")
+        elif raw.get("tool") == "opencode":
+            public = {key: raw.get(key) for key in ("id", "label", "tool", "provider", "model", "build", "project_label", "care") if isinstance(raw.get(key), str)}
+            public.update(kind="opencode", valid=profile is not None, error=problem, running=False, project_sync="not_applicable")
         else:
             public = {key: raw.get(key) for key in ("id", "label", "tool", "provider", "model", "project_label") if isinstance(raw.get(key), str)}
             public.update(kind="local", valid=profile is not None, error=problem, running=bool(profile) and cli_project_locked(profile),
@@ -313,6 +334,14 @@ def list_cli_profiles() -> dict[str, Any]:
         public.update(project_place=place, last_used=last_used.get(public.get("id")))
         profiles.append(public)
     return {"configured": CLI_PROFILES_PATH.exists(), "error": error, "profiles": profiles, "client_active": cli_client_active()}
+def opencode_config(profile: dict[str, Any]) -> str:
+    """NOVA's OpenCode settings for one launch: the tailored build, how careful it is, and the
+    nova tool through which it can ask NOVA (and so the user) to change its own settings."""
+    model = "ollama/" + profile["build"] + ":latest"
+    return json.dumps({"model": model, "small_model": model, "instructions": [str(NOVA_INSTRUCTIONS)], "permission": OPENCODE_CARE[profile["care"]],
+                       "mcp": {"nova": {"type": "local", "command": [CLI_PYTHON, "-B", str(NOVA_MCP)],
+                                        "environment": {"NOVA_CLI_BUILD": profile["build"]}, "timeout": 130000, "enabled": True}}},
+                      separators=(",", ":"))
 def open_coding_cli(snapshot: dict[str, Any]) -> dict[str, Any]:
     base = {"action": "open_coding_cli", "profile_id": snapshot.get("profile_id")}
     if set(snapshot) != {"profile_id", "model"} or not all(isinstance(snapshot[key], str) for key in snapshot): return {**base, "status": "failure", "error": "invalid_cli_request"}
@@ -323,14 +352,20 @@ def open_coding_cli(snapshot: dict[str, Any]) -> dict[str, Any]:
     profile, problem = match
     if profile is None: return {**base, "status": "failure", "error": problem}
     online = profile.get("provider") == "online"
+    opencode = profile.get("tool") == "opencode"
     if ("online" if online else profile["model"]) != snapshot["model"]: return {**base, "status": "failure", "error": "profile_model_mismatch"}
-    if not online and cli_session_active(profile): return {**base, "status": "failure", "error": "cli_session_active"}
+    if not online and not opencode and cli_session_active(profile): return {**base, "status": "failure", "error": "cli_session_active"}
     missing = missing_terminal_session_environment()
     if missing: return {**base, "status": "failure", "error": "desktop_session_unavailable", "missing_session_environment": missing}
     if online:
         argv = ["/usr/bin/omarchy", "launch", "tui", "--app-id=" + CLI_APP_ID, "/usr/bin/env", "-C", profile["project"], profile["command"]]
         extra: dict[str, Any] = {}
         message = "Launch request sent. NOVA cannot confirm the terminal appeared."
+    elif opencode:
+        argv = ["/usr/bin/omarchy", "launch", "tui", "--app-id=" + CLI_APP_ID, "/usr/bin/env", "-C", profile["project"],
+                "OPENCODE_CONFIG_CONTENT=" + opencode_config(profile), profile["command"], "--standalone"]
+        extra = {"model": profile["model"], "build": profile["build"]}
+        message = "Launch request sent. NOVA cannot confirm the terminal appeared; the first start may download OpenCode."
     else:
         argv = ["/usr/bin/omarchy", "launch", "tui", "--app-id=" + CLI_APP_ID, CLI_PYTHON, "-B", profile["launcher"], "--project", profile["project"], "--interactive"]
         extra = {"model": profile["model"]}

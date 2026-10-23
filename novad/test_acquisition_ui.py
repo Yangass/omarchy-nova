@@ -287,7 +287,8 @@ class AcquisitionUiContractTests(unittest.TestCase):
         approval = PANEL[PANEL.index('id: approvalColumn'):PANEL.index('Item { width: parent.width; height: Style.spacing.md }', PANEL.index('id: approvalColumn'))]
         self.assertIn('Ui.Button', approval)
         self.assertIn('text: "Cancel Esc"', approval)
-        self.assertIn('text: "Approve ↵"', approval)
+        # 0.15: a coding CLI approval may name its approve button; the default stays "Approve ↵".
+        self.assertIn('text: (root.pendingApproval && root.pendingApproval.approve_label ? root.pendingApproval.approve_label : "Approve") + " ↵"', approval)
         self.assertIn('id: cancelApprovalButton', approval)
         self.assertIn('id: approveApprovalButton', approval)
         self.assertIn('id: cancelApprovalControl', approval)

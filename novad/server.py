@@ -19,7 +19,7 @@ from http.server import BaseHTTPRequestHandler
 from threading import Event, Lock, Thread
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 from catalog_observability import OLLAMA_STORAGE, catalog_view, local_inventory
 from acquisition_integration import live_preflight
 from acquisition_lifecycle import AcquisitionLifecycle, LifecycleError
@@ -31,6 +31,7 @@ from recommendation_integration import (RecommendationRequestError,
                                         load_and_build_recommendations, parse_request)
 from onboarding_integration import collect_onboarding_state
 import catalog_repins
+import coding_cli
 import local_socket
 from local_socket import OwnerOnlyHTTPServer
 import model_updates
@@ -169,6 +170,10 @@ def local_model_fit() -> dict[str, Any]:
 CHAT_CONTEXTS: dict[str, int | None] = {}
 
 def chat_context(model_id: str) -> int | None:
+    # With a coding CLI build of this model, chat uses the build's context: Ollama then
+    # serves both from one loaded copy instead of two (0.15).
+    build = CLI_BUILDS.for_base(model_id) or (CLI_BUILDS.for_base(model_id + ":latest") if ":" not in model_id else None)
+    if build: return build[1]["context"]
     if model_id not in CHAT_CONTEXTS:
         context = None
         try:
@@ -182,6 +187,147 @@ def chat_context(model_id: str) -> int | None:
     return CHAT_CONTEXTS[model_id]
 
 PROVIDERS["ollama"].context_for = chat_context
+
+# --- a coding CLI for everyone (0.15): see coding_cli.py ---
+CLI_BUILDS = coding_cli.Builds()
+CLI_PROPOSALS = coding_cli.Proposals()
+CLI_MODEL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}")
+
+def installed_fit(model: str) -> tuple[dict[str, Any] | None, dict[str, Any], str | None]:
+    """(model_fit row of an installed model, budget, graphics card name)."""
+    fit = local_model_fit()
+    names = {model, model if ":" in model else model + ":latest"}
+    row = next((item for item in fit.get("models", []) if item.get("id") in names), None)
+    budget = fit.get("budget") if isinstance(fit.get("budget"), dict) else {}
+    gpus = (fit.get("hardware") or {}).get("capacity", {}).get("gpus", [])
+    device = next((g for g in gpus if isinstance(g, dict) and g.get("id") == budget.get("device")), None)
+    name = device.get("model") if device and isinstance(device.get("model"), str) else None
+    if name: name = re.sub(r"^(NVIDIA GeForce|NVIDIA|AMD Radeon|AMD)\s+", "", name)
+    return row, budget, name
+
+def cli_tune_state(model: str) -> tuple[int, dict[str, Any]]:
+    if not isinstance(model, str) or not CLI_MODEL_NAME.fullmatch(model): return HTTPStatus.BAD_REQUEST, {"error": "invalid_model"}
+    row, budget, gpu = installed_fit(model)
+    if row is None: return HTTPStatus.NOT_FOUND, {"error": "model_not_installed"}
+    base = row["id"]
+    numbers = coding_cli.tune_numbers(row, budget)
+    build = CLI_BUILDS.for_base(base)
+    own = (row.get("metadata") or {}).get("own_context")
+    recommended = own if type(own) is int and own > 0 else numbers["recommended_context"] if numbers and numbers["recommended_context"] else 32768
+    recommended = max([step for step in coding_cli.STEPS if step <= recommended] or [4096])
+    context = build[1]["context"] if build else recommended
+    return HTTPStatus.OK, {"model": base, "build": coding_cli.build_name(base), "built": build is not None,
+                           "context": context, "recommended_context": recommended, "numbers": numbers,
+                           "verdict": coding_cli.verdict(numbers, context) if numbers else None, "gpu": gpu}
+
+def cli_setup_state(model: str) -> tuple[int, dict[str, Any]]:
+    status, state = cli_tune_state(model)
+    if status != HTTPStatus.OK: return status, state
+    tools = [{"id": tool, "label": spec["label"], "available": coding_cli.tool_command(tool) is not None,
+              "downloads_on_first_start": not (Path.home() / ".local/share/mise/installs" / spec["binary"]).is_dir()}
+             for tool, spec in coding_cli.TOOLS.items()]
+    profile = coding_cli.profile_id("opencode", state["model"])
+    return HTTPStatus.OK, {**state, "tools": tools, "projects": coding_cli.candidate_projects(),
+                           "care": list(coding_cli.CARE), "profile_id": profile}
+
+def cli_build(base: str, context: int) -> None:
+    def create(name: str, from_model: str, tokens: int) -> None:
+        try: PROVIDERS["ollama"].create_build(name, from_model, tokens)
+        except (ProviderOperationFailed, ProviderUnavailable) as error: raise RuntimeError(str(error)) from error
+    coding_cli.make_build(create, CLI_BUILDS, base, context)
+    CHAT_CONTEXTS.pop(base, None)
+    audit("coding_cli_build", base=base, context=context)
+
+def cli_setup_proposal(value: Any) -> tuple[int, dict[str, Any]]:
+    if not isinstance(value, dict) or set(value) != {"model", "tool", "project", "care"}: return HTTPStatus.BAD_REQUEST, {"error": "invalid_setup_request"}
+    if value["tool"] not in coding_cli.TOOLS or value["care"] not in coding_cli.CARE: return HTTPStatus.BAD_REQUEST, {"error": "invalid_setup_request"}
+    command = coding_cli.tool_command(value["tool"])
+    if command is None: return HTTPStatus.CONFLICT, {"error": "tool_unavailable"}
+    project = coding_cli.project_ok(value["project"])
+    if project is None: return HTTPStatus.BAD_REQUEST, {"error": "project_unavailable"}
+    status, state = cli_setup_state(value["model"])
+    if status != HTTPStatus.OK: return status, state
+    base, context, build = state["model"], state["context"], state["build"]
+    profile = coding_cli.opencode_profile(base, build, command, project, value["care"])
+    label = coding_cli.TOOLS[value["tool"]]["label"]
+    first = next((t for t in state["tools"] if t["id"] == value["tool"]), {})
+    changes = [f"Create {build}: {base} with a {coding_cli.context_label(context)} working context (uses the model files you have; no download, no extra disk).",
+               f"Add OPEN CLI for {profile['project_label']} to this model's card. {label} starts there with NOVA's settings; your own {label} settings stay as they are.",
+               "It asks before it edits files or runs commands." if value["care"] == "ask" else "It edits files freely and asks before it runs commands."]
+    if first.get("downloads_on_first_start"): changes.append(f"The first OPEN CLI downloads {label} itself (Omarchy's installer; the terminal shows the progress).")
+    def execute(_decision: str) -> dict[str, Any]:
+        cli_build(base, context)
+        coding_cli.add_profile(profile)
+        audit("coding_cli_setup", profile_id=profile["id"], base=base, context=context, care=value["care"])
+        return {"status": "set_up", "profile_id": profile["id"], "build": build, "context": context}
+    item = CLI_PROPOSALS.create({"action": "coding_cli_setup", "summary": f"Set up {label} with {base} in {profile['project_label']}",
+                                 "impact": "NOVA makes exactly these changes; nothing else on your computer changes.",
+                                 "changes": changes, "verdict": state["verdict"], "model": base}, execute)
+    audit("proposal_created", id=item["id"], action="coding_cli_setup")
+    return HTTPStatus.CREATED, item
+
+def cli_tune_apply(value: Any) -> tuple[int, dict[str, Any]]:
+    """TUNE in NOVA's panel: the user chose it there (risky choices confirmed in the card)."""
+    if not isinstance(value, dict) or set(value) != {"model", "context"} or value["context"] not in coding_cli.STEPS: return HTTPStatus.BAD_REQUEST, {"error": "invalid_tune_request"}
+    status, state = cli_tune_state(value["model"])
+    if status != HTTPStatus.OK: return status, state
+    try: cli_build(state["model"], value["context"])
+    except (RuntimeError, OSError, ValueError) as error: return HTTPStatus.SERVICE_UNAVAILABLE, {"error": "build_failed", "detail": str(error)[:120]}
+    return HTTPStatus.OK, {"model": state["model"], "context": value["context"],
+                           "verdict": coding_cli.verdict(state["numbers"], value["context"]) if state["numbers"] else None}
+
+def cli_self_state(build: str) -> tuple[int, dict[str, Any]]:
+    """What the coding CLI's own settings tool reads (the MCP server in nova-actions)."""
+    item = CLI_BUILDS.load().get(build) if isinstance(build, str) else None
+    if item is None: return HTTPStatus.NOT_FOUND, {"error": "unknown_build"}
+    status, state = cli_tune_state(item["base"])
+    if status != HTTPStatus.OK: return status, state
+    numbers = state["numbers"]
+    return HTTPStatus.OK, {"build": build, "model": state["model"], "context": item["context"], "recommended_context": state["recommended_context"],
+                           "native_context": numbers["native_context"] if numbers else None, "gpu": state["gpu"],
+                           "verdict": coding_cli.verdict(numbers, item["context"]) if numbers else None,
+                           "offered_contexts": numbers["steps"] if numbers else list(coding_cli.STEPS)}
+
+CLI_SELF_REQUEST_GAP_SECONDS = 20
+CLI_SELF_LAST_REQUEST = [0.0]
+
+def cli_self_proposal(value: Any) -> tuple[int, dict[str, Any]]:
+    """The coding CLI asks to change its own working context: NOVA shows the fit and the user
+    decides in the panel. Blocks until then (or two minutes). One request per 20 seconds: each
+    opens NOVA's panel, so a looping agent must not be able to keep popping it up."""
+    now = time.monotonic()
+    if now - CLI_SELF_LAST_REQUEST[0] < CLI_SELF_REQUEST_GAP_SECONDS: return HTTPStatus.TOO_MANY_REQUESTS, {"error": "too_many_requests"}
+    if not isinstance(value, dict) or not set(value) <= {"build", "context", "reason"} or type(value.get("context")) is not int: return HTTPStatus.BAD_REQUEST, {"error": "invalid_settings_request"}
+    status, state = cli_self_state(value.get("build"))
+    if status != HTTPStatus.OK: return status, state
+    numbers = cli_tune_state(state["model"])[1].get("numbers")
+    steps = numbers["steps"] if numbers else list(coding_cli.STEPS)
+    requested = min(steps, key=lambda step: abs(step - value["context"]))
+    current = state["context"]
+    if requested == current: return HTTPStatus.OK, {"status": "unchanged", "context": current}
+    # A model NOVA can't estimate still reaches the user, with that said plainly.
+    check = coding_cli.verdict(numbers, requested) if numbers else {
+        "level": "unknown", "past_native": False,
+        "text": "NOVA can't estimate graphics memory for this model, so it can't tell whether this fits. Choose it only if you know it does."}
+    risky = check["level"] != "fits" or check["past_native"]
+    alternative = coding_cli.best_fitting(numbers, requested) if risky and numbers else None
+    if alternative in (None, current, requested): alternative = None
+    reason = value.get("reason") if isinstance(value.get("reason"), str) else ""
+    label = coding_cli.context_label
+    def execute(decision: str) -> dict[str, Any]:
+        chosen = alternative if decision == "alternative" else requested
+        cli_build(state["model"], chosen)
+        return {"status": "changed", "context": chosen}
+    CLI_SELF_LAST_REQUEST[0] = now
+    item = CLI_PROPOSALS.create({"action": "coding_cli_tune", "summary": f"Your coding CLI asks: working context {label(current)} → {label(requested)}",
+                                 "impact": "It can't change its model by itself; only you can, here. The model reloads with the new context on its next message.",
+                                 "changes": ([f'Its reason: "{reason[:200]}"'] if reason else []) + [f"Rebuild {state['build']} with a {label(requested)} working context (no download)."],
+                                 "verdict": check, "model": state["model"], "approve_label": f"Use {label(requested)}" + (" anyway" if risky else ""),
+                                 "alternative_context": alternative, "alternative_label": f"Use {label(alternative)} · fits" if alternative else None}, execute)
+    audit("proposal_created", id=item["id"], action="coding_cli_tune")
+    result = CLI_PROPOSALS.wait(item["id"])
+    return HTTPStatus.OK, {**result, "requested_context": requested, "previous_context": current}
+
 
 def local_recommendations(query: str) -> dict[str, Any]:
     """Read existing local catalog/fit snapshots and return advisory policy output."""
@@ -626,6 +772,15 @@ def cli_profiles_state() -> tuple[int, dict[str, Any]]:
             blocked = None if item.get("valid") is True else (item.get("error") or "invalid_profile")
             profiles.append({**item, "available": blocked is None, "blocked": blocked, "conflicting_models": []})
             continue
+        if item.get("kind") == "opencode":
+            # OpenCode loads its build itself (one copy with chat: same files, same context).
+            blocked = None if item.get("valid") is True else (item.get("error") or "invalid_profile")
+            if blocked is None and nova_state == "model_switching": blocked = "model_loading"
+            build = CLI_BUILDS.load().get(item.get("build", ""))
+            if blocked is None and build is None: blocked = "build_missing"
+            profiles.append({**item, "available": blocked is None, "blocked": blocked, "conflicting_models": [],
+                             "context": build["context"] if build else None})
+            continue
         blocked = None
         if item.get("valid") is not True: blocked = item.get("error") or "invalid_profile"
         elif item.get("running"): blocked = "cli_session_active"
@@ -780,7 +935,7 @@ def run_agent_loop(user_message: str, on_token: Callable[[str], None] | None = N
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "novad/0.14.15"
+    server_version = "novad/0.15.0"
     def log_message(self, _format: str, *_args: Any) -> None: return
     def send_json(self, status: HTTPStatus, payload: dict[str, Any]) -> bool:
         # Ends with a newline: the panel reads the socket line by line (BarWidget.novaRequest).
@@ -825,6 +980,14 @@ class Handler(BaseHTTPRequestHandler):
                 status, payload = chat_session_error(error)
                 self.send_json(status, payload)
             return
+        if parsed.path in ('/cli/setup', '/cli/tune', '/cli/self'):
+            query = parse_qs(parsed.query, max_num_fields=2)
+            key = 'build' if parsed.path == '/cli/self' else 'model'
+            values = query.get(key, [])
+            if len(values) != 1 or set(query) != {key} or not self.empty_request_body():
+                self.send_json(HTTPStatus.BAD_REQUEST, {'error': 'invalid_coding_cli_request'}); return
+            handler = {'/cli/setup': cli_setup_state, '/cli/tune': cli_tune_state, '/cli/self': cli_self_state}[parsed.path]
+            status, payload = handler(values[0]); self.send_json(HTTPStatus(status), payload); return
         if parsed.path == '/acquisitions':
             if parsed.query:
                 self.send_json(HTTPStatus.BAD_REQUEST, {'error': 'invalid_acquisition_list_request'}); return
@@ -878,7 +1041,8 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/hardware/profile": self.send_json(HTTPStatus.OK, hardware_profile())
         elif self.path == "/models/fit": self.send_json(HTTPStatus.OK, local_model_fit())
         elif self.path == "/state":
-            state=RUNTIME.snapshot(); state["selection"]={"configured":has_active_selection(),"provider":ACTIVE_PROVIDER,"model":ACTIVE_MODEL}; self.send_json(HTTPStatus.OK,state)
+            state=RUNTIME.snapshot(); state["selection"]={"configured":has_active_selection(),"provider":ACTIVE_PROVIDER,"model":ACTIVE_MODEL}
+            state["coding_cli_approval"]=CLI_PROPOSALS.pending(); self.send_json(HTTPStatus.OK,state)
         elif self.path == "/providers": self.send_json(HTTPStatus.OK, provider_state())
         elif self.path == "/cli/profiles":
             status, payload = cli_profiles_state(); self.send_json(HTTPStatus(status), payload)
@@ -888,6 +1052,12 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 active=active_model_state()
                 models=model_inventory()
+                # A coding CLI's tailored build belongs on its model's card, not in the list (0.15).
+                builds=CLI_BUILDS.load()
+                for entry in models:
+                    name=str(entry.get("id") or "")
+                    build=builds.get(name[:-len(":latest")] if name.endswith(":latest") else name)
+                    if build: entry["tailored_for"]=build["base"]; entry["tailored_context"]=build["context"]
                 try:
                     if hasattr(PROVIDERS[inventory_provider_id()], "running_models"):
                         resident=PROVIDERS[inventory_provider_id()].running_models()
@@ -921,6 +1091,15 @@ class Handler(BaseHTTPRequestHandler):
         else: self.send_json(HTTPStatus.NOT_FOUND, {"error": "Unknown endpoint."})
     def do_POST(self) -> None:
         parsed = urlsplit(self.path)
+        if parsed.path in ('/cli/setup/proposals', '/cli/tune', '/cli/self/proposals'):
+            try: size = int(self.headers.get('Content-Length') or '0')
+            except ValueError: size = -1
+            if parsed.query or not 0 < size <= 4096 or self.headers.get('Transfer-Encoding'):
+                self.send_json(HTTPStatus.BAD_REQUEST, {'error': 'invalid_coding_cli_request'}); return
+            try: value = json.loads(self.rfile.read(size).decode())
+            except (ValueError, UnicodeDecodeError): value = None
+            handler = {'/cli/setup/proposals': cli_setup_proposal, '/cli/tune': cli_tune_apply, '/cli/self/proposals': cli_self_proposal}[parsed.path]
+            status, payload = handler(value); self.send_json(HTTPStatus(status), payload); return
         if parsed.path == '/chat/sessions':
             if parsed.query or not self.empty_request_body():
                 self.send_json(HTTPStatus.BAD_REQUEST,
@@ -1033,11 +1212,13 @@ class Handler(BaseHTTPRequestHandler):
             audit("cli_launch_result", profile_id=value["profile_id"], status=result.get("status"), error=result.get("error"))
             self.send_json(HTTPStatus.OK if result.get("status") == "dispatched" else HTTPStatus.CONFLICT, result); return
         parts = self.path.split("/")
-        if len(parts) == 4 and parts[1] == "approvals" and parts[3] in ("approve", "deny") and not urlsplit(self.path).query:
+        if len(parts) == 4 and parts[1] == "approvals" and parts[3] in ("approve", "deny", "alternative") and not urlsplit(self.path).query:
             try: size = int(self.headers.get("Content-Length") or "0")
             except ValueError: size = -1
             if size != 0 or self.headers.get('Transfer-Encoding'): self.send_json(HTTPStatus.BAD_REQUEST, {"error":"approval_arguments_not_accepted"}); return
-            status, payload = APPROVALS.decide(parts[2], "approved" if parts[3] == "approve" else "denied")
+            if parts[2].startswith("cli_"): status, payload = CLI_PROPOSALS.decide(parts[2], parts[3])
+            elif parts[3] == "alternative": status, payload = HTTPStatus.BAD_REQUEST, {"error": "invalid_decision"}
+            else: status, payload = APPROVALS.decide(parts[2], "approved" if parts[3] == "approve" else "denied")
             self.send_json(HTTPStatus(status), payload); return
         if parsed.path.startswith('/models/installed/') and parsed.path.endswith('/remove'):
             raw = parsed.path[len('/models/installed/'):-len('/remove')]

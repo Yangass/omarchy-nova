@@ -33,7 +33,7 @@ class RecoveryUiTests(unittest.TestCase):
         self.assertIn('objectName: "recoveryConfirmationControl"', PANEL)
         self.assertIn('objectName: "approveApprovalHitTarget"', PANEL)
         self.assertIn('objectName: "cancelApprovalHitTarget"', PANEL)
-        self.assertIn('text: "Approve ↵"', PANEL)
+        self.assertIn('text: (root.pendingApproval && root.pendingApproval.approve_label ? root.pendingApproval.approve_label : "Approve") + " ↵"', PANEL)
         self.assertIn("recoveryAllowsRetry(root.acquisitionFor(modelData.catalog_id))", PANEL)
         self.assertIn("acquisitionHistory(modelData)", PANEL)
 

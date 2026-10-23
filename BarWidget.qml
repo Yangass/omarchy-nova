@@ -46,6 +46,8 @@ Ui.BarWidget {
   property string currentTool: ""
   property string activeProvider: ""
   property string activeModel: ""
+  // A coding CLI asked NOVA to change its settings (0.15): the panel shows the approval.
+  property var codingCliApproval: null
   property bool activeModelAvailable: false
   property bool activeModelRuntimeReady: false
   property string modelTarget: ""
@@ -125,6 +127,9 @@ Ui.BarWidget {
         root.currentTool = root.runtimeState === "tool_call" && typeof payload.tool === "string" ? payload.tool : (typeof payload.action === "string" ? payload.action : "")
         root.modelTarget = (root.runtimeState === "model_switching" || root.runtimeState === "model_switch_error") && typeof payload.model === "string" ? payload.model : ""
         root.modelPhase = typeof payload.phase === "string" ? payload.phase : ""
+        var cli = payload.coding_cli_approval
+        var cliId = cli && typeof cli === "object" && typeof cli.id === "string" ? cli.id : ""
+        if (cliId !== (root.codingCliApproval ? root.codingCliApproval.id : "")) root.codingCliApproval = cliId ? cli : null
       } catch (error) { root.runtimeState = "error"; root.currentTool = ""; root.modelTarget = ""; root.modelPhase = "" }
     })
   }

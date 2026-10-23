@@ -29,6 +29,10 @@ apps, so it is built to do that only for you and only after you approve.
   model name, a typed reference or a service answer can't add images or markup, and
   can't make the shell load a file. Chat answers are escaped before their light
   formatting is added.
+- **The coding CLI asking for changes.** OpenCode gets one NOVA tool. It talks to novad
+  over NOVA's private socket, reads its own model settings, and can ask for a different
+  working context. Nothing changes until you approve it in NOVA's panel, at most one
+  request every 20 seconds. By default it asks before it edits files or runs commands.
 - **Other apps' clipboard contents.** NOVA's text boxes are always read-only to Qt, so
   the shell never reads the clipboard for them, not even while you type. Paste reads it
   in a separate helper, at most 128 KB and for at most 2 seconds. Another app can't make

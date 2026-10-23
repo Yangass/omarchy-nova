@@ -53,6 +53,18 @@ pinned build; anything else is reported as a failure, never silently accepted.
 **ADD A MODEL** probes any model from Ollama's library the same way and lists it
 as one you added (not curated by NOVA).
 
+**Coding CLI.** SET UP CODING CLI on a model's card asks novad for one approval that
+lists every change: novad makes a *tailored build* of the model (Ollama's create from the
+model with `num_ctx` set: the same files, so no download, and Ollama serves the model and
+its build from one copy in memory), and adds an OpenCode profile to
+`~/.config/nova/cli-profiles.json`. OPEN CLI then starts OpenCode in the chosen folder with
+NOVA's settings passed only to that process (`OPENCODE_CONFIG_CONTENT`): the build, ask
+before edits and commands, NOVA's instructions, and NOVA's MCP tool (`nova_mcp.py`). The
+tool talks to novad over its socket and can read the CLI's settings or ask for another
+working context; novad shows the request in the panel with the fit (fits, tight, doesn't
+fit, past what the model was trained for) and changes the build only after your approval.
+NOVA's chat uses the build's context too, so chat and CLI share the loaded model.
+
 **Updates.** Once a week (or when you click REFRESH) novad reads the live manifest of
 every installed model NOVA knows, a few KB each. Same build: nothing to do. A newer
 build of the same model (the guard above) is offered with what changed: if its weights

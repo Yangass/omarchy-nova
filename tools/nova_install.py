@@ -40,7 +40,7 @@ RUNTIME_FILES = (
     "novad/model_removal.py", "novad/recommendation_integration.py", "novad/registry_probe.py",
     "novad/requested_models.py",
     "novad/onboarding.py",
-    "novad/onboarding_integration.py", "novad/server.py", "nova-actions/server.py",
+    "novad/onboarding_integration.py", "novad/server.py", "novad/coding_cli.py", "nova-actions/server.py", "nova-actions/nova_mcp.py", "nova-actions/opencode-instructions.md",
     "nova-system-tools/server.py", "novad/local_socket.py", "nova-actions/local_socket.py",
     "nova-system-tools/local_socket.py", "nova-system-tools/pyproject.toml", "catalog/models.json",
     "catalog/evidence.json", "catalog/acquisition_fit.json",

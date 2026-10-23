@@ -155,6 +155,15 @@ class OllamaProvider:
         try: context = self.context_for(model) if self.context_for else None
         except Exception: context = None
         return {"options": {"num_ctx": context}} if type(context) is int and context > 0 else {}
+    def create_build(self, name: str, base: str, context: int, timeout: int = 120) -> None:
+        """A tailored build (0.15): `base` with its working context built in. Ollama shares
+        the files (no download, no extra disk) and, with the same context, the loaded copy."""
+        result = self._post_json("/api/create", {"model": name, "from": base, "parameters": {"num_ctx": context}, "stream": False}, timeout)
+        if result.get("status") != "success": raise ProviderOperationFailed("Ollama did not create the build.")
+        details = self._post_json("/api/show", {"model": name}, 10)
+        own = re.search(r'(?m)^num_ctx\s+(\d+)\s*$', details.get("parameters") or "") if isinstance(details.get("parameters"), str) else None
+        if not own or int(own.group(1)) != context: raise ProviderOperationFailed("Ollama did not confirm the build's working context.")
+        with self._fit_lock: self._fit_cache.pop(name, None)
     def running_models(self, timeout: int = 3) -> list[dict[str, Any]]:
         status,payload=self._json("/api/ps",timeout)
         if status != HTTPStatus.OK: raise ProviderUnavailable("Ollama runtime state is unavailable.")

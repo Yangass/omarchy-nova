@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.15.0
+
+- **A coding assistant on your own model, in one approval.** Omarchy installs OpenCode
+  for every user. **SET UP CODING CLI** on a model's card connects it: NOVA makes a build
+  of the model with the right working context (from the files you have, no download),
+  adds **OPEN CLI** for a folder you choose, and starts OpenCode with NOVA's settings only.
+  Your own OpenCode settings are not touched. It asks before it edits files or runs commands
+  (or edits freely and asks before commands, if you choose).
+- **TUNE: how much it keeps in mind, with what fits.** A slider over the working contexts
+  NOVA offers, a meter of your graphics card's memory, and plain words: fits, tight (little
+  room left for the desktop), doesn't fit (it spills into system memory: several times
+  slower), or past what the model was trained for. Anything but a plain fit asks
+  "are you sure?" first.
+- **The coding assistant can ask NOVA for more context itself.** NOVA shows its request
+  with the same warnings and, when it doesn't fit, the most that does; you decide.
+- **A welcome once your first model is ready** (and once after this update): what NOVA set
+  up, the working context it chose and why, three things to try, and the coding CLI.
+
 ## 0.14.15
 
 - **Chat replies finish, and approvals show up.** A reply ended with "NOVA · INCOMPLETE" and
