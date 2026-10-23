@@ -36,7 +36,7 @@ NOVA_MCP = Path(__file__).resolve().parent / "nova_mcp.py"
 # Tells the model about NOVA's two tools: OpenCode 2 offers MCP tools inside its code
 # runtime, where a model doesn't always look for them on its own (2026-10-23, live test).
 NOVA_INSTRUCTIONS = Path(__file__).resolve().parent / "opencode-instructions.md"
-ONLINE_CLI_TOOLS = {"claude-code": "claude", "codex": "codex"}
+ONLINE_CLI_TOOLS = {"claude-code": "claude", "codex": "codex", "antigravity": "agy"}
 # Omarchy tags TUI.* windows as terminals (default/hypr/apps/terminals.lua), so its
 # universal copy/paste (Super+C/V) sends Ctrl+Insert/Shift+Insert instead of Ctrl+C/V.
 CLI_APP_ID = "TUI.nova-cli"

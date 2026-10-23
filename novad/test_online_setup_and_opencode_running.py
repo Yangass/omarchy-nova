@@ -93,8 +93,9 @@ class OnlineSetup(unittest.TestCase):
     def test_profiles_say_which_online_tools_are_here_and_set_up(self):
         with self.tools():
             state = novad.online_tools_state([{"kind": "online", "tool": "codex"}, {"kind": "opencode", "tool": "opencode"}])
-        self.assertEqual(state, [{"id": "claude-code", "label": "Claude Code", "available": True, "set_up": False},
-                                 {"id": "codex", "label": "Codex", "available": False, "set_up": True}])
+        self.assertEqual([(t["id"], t["service"], t["available"], t["set_up"]) for t in state],
+                         [("claude-code", "Anthropic", True, False), ("codex", "OpenAI", False, True), ("antigravity", "Google", False, False)])
+        self.assertEqual([t["install_hint"] for t in state], ["Omarchy's update installs it"] * 2 + ["get it from antigravity.google"])
 
     def test_setup_lists_the_exact_changes_and_approving_writes_one_profile(self):
         profiles = self.dir / "cli-profiles.json"
@@ -126,8 +127,26 @@ class OnlineSetup(unittest.TestCase):
     def test_the_setup_card_gets_the_tools_and_folders(self):
         with self.tools(), patch.object(novad.coding_cli, "candidate_projects", return_value=["~/Work", "~/nova"]):
             status, state = novad.online_setup_state()
-        self.assertEqual((status, [t["id"] for t in state["tools"]], state["projects"]), (200, ["claude-code", "codex"], ["~/Work", "~/nova"]))
-        self.assertEqual([t["available"] for t in state["tools"]], [True, False])
+        self.assertEqual((status, [t["id"] for t in state["tools"]], state["projects"]), (200, ["claude-code", "codex", "antigravity"], ["~/Work", "~/nova"]))
+        self.assertEqual([t["available"] for t in state["tools"]], [True, False, False])
+
+    def test_antigravity_is_set_up_like_the_others_and_needs_no_omarchy_download(self):
+        """2026-10-23 (Konstantin): Antigravity's agy, from Google's own installer in ~/.local/bin."""
+        agy = self.dir / "bin" / "agy"; agy.write_text("#!/bin/bash\n"); agy.chmod(0o755)
+        profiles = self.dir / "cli-profiles.json"
+        with patch.object(novad.coding_cli, "tool_command", lambda tool: agy if tool == "antigravity" else None), \
+             patch.object(novad.coding_cli, "PROFILES_PATH", profiles), patch.object(novad.coding_cli, "add_profile", lambda profile: ADD(profile, profiles)):
+            status, item = novad.online_setup_proposal({"tool": "antigravity", "project": "~/.cache"})
+            self.assertEqual((status, item["summary"]), (201, "Set up Antigravity in ~/.cache"))
+            self.assertIn("Google under your own account", item["changes"][1])
+            self.assertEqual(item["changes"][2], "Antigravity asks you to sign in the first time, if you haven't yet.")
+            novad.CLI_PROPOSALS.decide(item["id"], "approve")
+        [added] = json.loads(profiles.read_text())["profiles"]
+        self.assertEqual((added["id"], added["tool"], added["command"]), ("antigravity", "antigravity", str(agy)))
+        self.assertIsNone(actions.validate_cli_profile(added)[1])
+        # Named anything else, the same file is refused.
+        other = self.dir / "bin" / "notagy"; other.write_text("#!/bin/bash\n"); other.chmod(0o755)
+        self.assertEqual(actions.validate_cli_profile({**added, "command": str(other)})[1], "command_unavailable")
 
 
 if __name__ == "__main__":

@@ -28,8 +28,12 @@ STEPS = (4096, 8192, 12288, 16384, 24576, 32768, 40960, 49152, 65536, 98304, 131
 TOOLS = {"opencode": {"label": "OpenCode", "binary": "opencode"}}
 # Online coding CLIs (ONLINE-01 step 2): Omarchy ships launchers for both; NOVA adds their
 # OPEN CLI in one approval. They sign in themselves; NOVA stores no keys.
-ONLINE_TOOLS = {"claude-code": {"label": "Claude Code", "binary": "claude", "service": "Anthropic"},
-                "codex": {"label": "Codex", "binary": "codex", "service": "OpenAI"}}
+# omarchy: Omarchy's launcher installs the tool on its first start (through mise). Antigravity
+# (2026-10-23, Konstantin: "also popular") isn't in Omarchy: Google's installer puts `agy` in
+# ~/.local/bin, and NOVA offers it once it's there.
+ONLINE_TOOLS = {"claude-code": {"label": "Claude Code", "binary": "claude", "service": "Anthropic", "omarchy": True},
+                "codex": {"label": "Codex", "binary": "codex", "service": "OpenAI", "omarchy": True},
+                "antigravity": {"label": "Antigravity", "binary": "agy", "service": "Google", "omarchy": False, "site": "antigravity.google"}}
 CARE = {"ask": {"edit": "ask", "bash": "ask"}, "edits": {"edit": "allow", "bash": "ask"}}
 PROPOSAL_TTL_SECONDS = 120
 MAX_BUILDS = 32

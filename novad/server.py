@@ -236,18 +236,24 @@ def cli_setup_state(model: str) -> tuple[int, dict[str, Any]]:
     return HTTPStatus.OK, {**state, "tools": tools, "projects": coding_cli.candidate_projects(),
                            "care": list(coding_cli.CARE), "profile_id": profile}
 
-def downloads_on_first_start(binary: str) -> bool:
-    return not (Path.home() / ".local/share/mise/installs" / binary).is_dir()
+def downloads_on_first_start(binary: str, omarchy: bool = True) -> bool:
+    """Omarchy's launcher installs its tool on the first start; a tool installed by its own
+    installer (Antigravity's agy) is already there."""
+    return omarchy and not (Path.home() / ".local/share/mise/installs" / binary).is_dir()
+
+def online_install_hint(spec: dict[str, Any]) -> str:
+    return "Omarchy's update installs it" if spec["omarchy"] else f"get it from {spec['site']}"
 
 def online_tools_state(profiles: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Claude Code and Codex: whether Omarchy's launcher is here and whether an OPEN CLI exists."""
+    """The online CLIs: whether each is on this computer and whether an OPEN CLI exists."""
     set_up = {p.get("tool") for p in profiles if isinstance(p, dict) and p.get("kind") == "online"}
-    return [{"id": tool, "label": spec["label"], "available": coding_cli.tool_command(tool) is not None, "set_up": tool in set_up}
+    return [{"id": tool, "label": spec["label"], "service": spec["service"], "available": coding_cli.tool_command(tool) is not None,
+             "set_up": tool in set_up, "install_hint": online_install_hint(spec)}
             for tool, spec in coding_cli.ONLINE_TOOLS.items()]
 
 def online_setup_state() -> tuple[int, dict[str, Any]]:
-    tools = [{"id": tool, "label": spec["label"], "available": coding_cli.tool_command(tool) is not None,
-              "downloads_on_first_start": downloads_on_first_start(spec["binary"])}
+    tools = [{"id": tool, "label": spec["label"], "service": spec["service"], "available": coding_cli.tool_command(tool) is not None,
+              "downloads_on_first_start": downloads_on_first_start(spec["binary"], spec["omarchy"])}
              for tool, spec in coding_cli.ONLINE_TOOLS.items()]
     return HTTPStatus.OK, {"tools": tools, "projects": coding_cli.candidate_projects()}
 
@@ -263,7 +269,7 @@ def online_setup_proposal(value: Any) -> tuple[int, dict[str, Any]]:
     changes = [f"Add OPEN CLI for {label} under ONLINE CLIS. It opens in {profile['project_label']}.",
                f"It runs online: what you type goes to {spec['service']} under your own account. NOVA stores no keys and never sees your sign-in.",
                f"The first OPEN CLI installs {label} (Omarchy's launcher; the terminal shows the progress), then asks you to sign in."
-               if downloads_on_first_start(spec["binary"]) else f"{label} asks you to sign in the first time, if you haven't yet."]
+               if downloads_on_first_start(spec["binary"], spec["omarchy"]) else f"{label} asks you to sign in the first time, if you haven't yet."]
     def execute(_decision: str) -> dict[str, Any]:
         coding_cli.add_profile(profile)
         audit("coding_cli_online_setup", profile_id=profile["id"])
@@ -1028,7 +1034,7 @@ def run_agent_loop(user_message: str, on_token: Callable[[str], None] | None = N
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "novad/0.17.0"
+    server_version = "novad/0.17.1"
     def log_message(self, _format: str, *_args: Any) -> None: return
     def send_json(self, status: HTTPStatus, payload: dict[str, Any]) -> bool:
         # Ends with a newline: the panel reads the socket line by line (BarWidget.novaRequest).

@@ -19,7 +19,7 @@ import time
 import fake_nova
 import onboarding_preview as preview
 
-STATE = {"set_up": False, "opencode_running": False, "posts": []}
+STATE = {"set_up": False, "opencode_running": False, "agy": False, "posts": []}
 OPENCODE = {"id": "opencode-qwen3-8b", "kind": "opencode", "label": "OpenCode", "tool": "opencode", "provider": "ollama",
             "model": "qwen3:8b", "build": "nova-qwen3-8b-cli", "project_label": "~/Work", "project_place": "~/Work", "care": "ask",
             "valid": True, "available": True, "blocked": None, "context": 32768, "conflicting_models": []}
@@ -41,11 +41,13 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/cli/profiles":
             profiles = [{**OPENCODE, "running": STATE["opencode_running"]}] + ([CLAUDE] if STATE["set_up"] else [])
             self.reply(200, {"configured": True, "error": None, "profiles": profiles, "client_active": False, "checked_at": "now",
-                             "online_tools": [{"id": "claude-code", "label": "Claude Code", "available": True, "set_up": STATE["set_up"]},
-                                              {"id": "codex", "label": "Codex", "available": True, "set_up": False}]})
+                             "online_tools": [{"id": "claude-code", "label": "Claude Code", "service": "Anthropic", "available": True, "set_up": STATE["set_up"], "install_hint": "Omarchy's update installs it"},
+                                              {"id": "codex", "label": "Codex", "service": "OpenAI", "available": True, "set_up": False, "install_hint": "Omarchy's update installs it"},
+                                              {"id": "antigravity", "label": "Antigravity", "service": "Google", "available": STATE["agy"], "set_up": False, "install_hint": "get it from antigravity.google"}]})
         elif self.path == "/cli/setup/online":
-            self.reply(200, {"tools": [{"id": "claude-code", "label": "Claude Code", "available": True, "downloads_on_first_start": True},
-                                       {"id": "codex", "label": "Codex", "available": True, "downloads_on_first_start": True}],
+            self.reply(200, {"tools": [{"id": "claude-code", "label": "Claude Code", "service": "Anthropic", "available": True, "downloads_on_first_start": True},
+                                       {"id": "codex", "label": "Codex", "service": "OpenAI", "available": True, "downloads_on_first_start": True},
+                                       {"id": "antigravity", "label": "Antigravity", "service": "Google", "available": STATE["agy"], "downloads_on_first_start": False}],
                              "projects": ["~/Work", "~/nova"]})
         else:
             self.reply(503, {"error": "fixture_unavailable"})
@@ -121,6 +123,9 @@ QML_CHECK = r'''
         check(findChild(novaPanel, "onlineCliTitle").text === "ONLINE CLIS · 2", "title: " + findChild(novaPanel, "onlineCliTitle").text)
         check(findChild(novaPanel, "onlineCliOfferRepeater").count === 2 && inside(offer(0), "onlineOfferName").text === "Claude Code" && inside(offer(1), "onlineOfferName").text === "Codex", "offers wrong")
         check(inside(offer(0), "onlineSetUpButton").text === "SET UP", "no SET UP")
+        var missing = findChild(novaPanel, "onlineCliMissingRepeater")
+        check(missing.count === 1 && inside(missing.itemAt(0), "onlineMissingName").text === "Antigravity"
+              && inside(missing.itemAt(0), "onlineMissingHint").text === "not on this computer · get it from antigravity.google", "Antigravity's line wrong")
         shot("1-offers")
       })
       test("SET UP shows the folders and the sign-in; the first folder is chosen", function() {
@@ -155,6 +160,15 @@ QML_CHECK = r'''
         check(findChild(novaPanel, "onlineCliOfferRepeater").count === 1 && inside(offer(0), "onlineOfferName").text === "Codex", "Claude Code still offered")
         check(findChild(novaPanel, "onlineCliTitle").text === "ONLINE CLIS · 2", "title after: " + findChild(novaPanel, "onlineCliTitle").text)
         shot("4-set-up")
+      })
+      test("installed, Antigravity gets SET UP with a Google sign-in", function() {
+        get("/__set__/agy/1"); refresh()
+        check(findChild(novaPanel, "onlineCliMissingRepeater").count === 0, "still shown as missing")
+        var row = null; for (var i = 0; i < findChild(novaPanel, "onlineCliOfferRepeater").count; i++) if (inside(offer(i), "onlineOfferName").text === "Antigravity") row = offer(i)
+        check(row !== null, "no Antigravity offer")
+        click(inside(row, "onlineSetUpButton")); wait(250)
+        check(inside(row, "onlineSignInText").text.indexOf("your own Google account") === 0, "sign-in: " + inside(row, "onlineSignInText").text)
+        click(inside(row, "onlineSetupCancel")); wait(100)
       })
       test("a running OpenCode says CLI RUNNING on its model's card", function() {
         // Back on MODELS the panel re-read the models; this fake novad has none to give.

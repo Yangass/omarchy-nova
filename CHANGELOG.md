@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.17.1
+
+- **Antigravity as an online CLI.** Google's Antigravity CLI (`agy`) joins Claude Code and
+  Codex under **ONLINE CLIS**: SET UP, choose the folder, approve, and OPEN CLI opens it there
+  with your own Google account. Omarchy doesn't install it; until Google's installer has put
+  `agy` in `~/.local/bin`, NOVA says where to get it.
+
 ## 0.17.0
 
 - **Claude Code and Codex in one approval.** Omarchy installs both. **ONLINE CLIS** now

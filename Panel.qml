@@ -2643,6 +2643,9 @@ Ui.Panel {
   // here and no OPEN CLI exists yet; SET UP = a folder, then one approval.
   readonly property var onlineCliOffers: !cliState || !Array.isArray(cliState.online_tools) ? [] : cliState.online_tools.filter(function(tool) {
       return tool && typeof tool.id === "string" && tool.available === true && tool.set_up !== true })
+  // Not on this computer yet: one quiet line each, with how to get it.
+  readonly property var onlineCliMissing: !cliState || !Array.isArray(cliState.online_tools) ? [] : cliState.online_tools.filter(function(tool) {
+      return tool && typeof tool.id === "string" && tool.available !== true && tool.set_up !== true })
   property string onlineSetupTool: ""
   property var onlineSetupState: null
   property string onlineSetupProject: ""
@@ -6412,7 +6415,7 @@ Ui.Panel {
                 id: onlineCliSection
                 objectName: "onlineCliSection"
                 width: parent.width
-                visible: root.onlineCliItems.length + root.onlineCliOffers.length > 0
+                visible: root.onlineCliItems.length + root.onlineCliOffers.length + root.onlineCliMissing.length > 0
                 spacing: Style.spacing.xs
                 Rectangle { width: parent.width; height: 1; color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.16) }
                 Row {
@@ -6555,7 +6558,7 @@ Ui.Panel {
                           visible: !!root.onlineSetupState; width: parent.width; height: onlineSignInText.implicitHeight
                           Text { textFormat: Text.PlainText; width: onlineSetupColumn.labelWidth; text: "SIGN-IN"; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2; font.letterSpacing: 1.2 }
                           Text { id: onlineSignInText; objectName: "onlineSignInText"; textFormat: Text.PlainText; x: onlineSetupColumn.labelWidth; width: parent.width - x; wrapMode: Text.Wrap
-                                 text: "your own " + (modelData.id === "codex" ? "OpenAI" : "Anthropic") + " account, in the terminal · NOVA keeps no keys"
+                                 text: "your own " + (modelData.service || "online") + " account, in the terminal · NOVA keeps no keys"
                                  color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                         }
                         Text { textFormat: Text.PlainText; objectName: "onlineSetupError"; visible: root.onlineSetupError !== ""; width: parent.width; wrapMode: Text.Wrap; text: root.onlineSetupError; color: root.destructiveColor; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
@@ -6581,6 +6584,15 @@ Ui.Panel {
                         }
                       }
                     }
+                  }
+                }
+                Repeater { model: root.onlineCliMissing; objectName: "onlineCliMissingRepeater"
+                  Item {
+                    required property var modelData
+                    width: parent.width; height: onlineMissingName.implicitHeight + 2
+                    Text { id: onlineMissingName; objectName: "onlineMissingName"; anchors.verticalCenter: parent.verticalCenter; textFormat: Text.PlainText; text: modelData.label; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; font.letterSpacing: 0.4 }
+                    Text { objectName: "onlineMissingHint"; anchors.left: onlineMissingName.right; anchors.leftMargin: Style.spacing.md; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight; textFormat: Text.PlainText
+                           text: "not on this computer · " + (modelData.install_hint || ""); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                   }
                 }
               }

@@ -38,8 +38,9 @@ already, NOVA still saves you the guesswork and the upkeep.
   edits files or runs commands. **TUNE** shows how much working context fits your graphics
   card and warns before a setting that would make it slow; the assistant can also ask NOVA
   for more context itself, and you decide.
-- **Claude Code and Codex too.** Omarchy installs both; **ONLINE CLIS → SET UP** adds
-  OPEN CLI for either in one approval. They sign in with your own account; NOVA keeps no keys.
+- **Claude Code, Codex and Antigravity too.** Omarchy installs the first two, and Google's
+  installer adds Antigravity's `agy`; **ONLINE CLIS → SET UP** adds OPEN CLI for each in one
+  approval. They sign in with your own account; NOVA keeps no keys.
 - **Shows what your machine is doing.** CPU, graphics, memory, disk, network, and which
   model is currently loaded, with one click to free its memory.
 - **Never does anything behind your back.** Every download, deletion, restart or app
@@ -116,8 +117,8 @@ Your chats and files stay on your computer. NOVA uses the internet only to:
 - read model details from Ollama's library and download the models you approve;
 - check once a week for newer builds of your models, and for a newer NOVA.
 
-Claude Code and Codex, if you set them up, are online services: what you type in them goes
-to Anthropic or OpenAI under your own account. NOVA only opens them.
+Claude Code, Codex and Antigravity, if you set them up, are online services: what you type
+in them goes to Anthropic, OpenAI or Google under your own account. NOVA only opens them.
 
 No account, no telemetry. And on your computer:
 
@@ -143,7 +144,7 @@ No account, no telemetry. And on your computer:
   added under **ADD A MODEL**; NOVA checks it the same way before you install.
 - **Coding CLI:** **SET UP CODING CLI** on a model's card connects OpenCode in one
   approval. Your own OpenCode settings stay as they are: NOVA hands over its settings only
-  when it opens OpenCode. Claude Code and Codex are set up under **ONLINE CLIS**; others can
+  when it opens OpenCode. Claude Code, Codex and Antigravity are set up under **ONLINE CLIS**; others can
   be added in `~/.config/nova/cli-profiles.json`.
 - **How it works inside:** [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md). Security
   details and how to report a problem: [SECURITY.md](SECURITY.md).
