@@ -620,7 +620,7 @@ class ApprovalStore:
                 update = store.get(identifier)['preflight'].get('intent') == 'update'
                 result = store.decide(identifier, decision, lambda catalog_id: local_acquisition_preflight(catalog_id, allow_update=update))
                 if result['state'] == 'APPROVED':
-                    Thread(target=store.run, args=(identifier,), daemon=True).start()
+                    Thread(target=run_acquisition, args=(store, identifier), daemon=True).start()
                 return 202, result
             except LifecycleError as error:
                 return error.status, {'error': error.code}
@@ -645,16 +645,59 @@ def removal_inputs(model: str) -> dict[str, Any]:
     """Fresh state for deleting a model (QWEN-11); unknowns stay None, which blocks."""
     status, payload = cli_profiles_state()
     cli_models = None if status != HTTPStatus.OK else cli_busy_models(payload)
-    return {"inventory": model_inventory(), "selected_model": ACTIVE_MODEL if has_active_selection() else None,
-            "resident": resident_models(), "cli_models": cli_models}
+    inventory = model_inventory()
+    return {"inventory": inventory, "selected_model": ACTIVE_MODEL if has_active_selection() else None,
+            "resident": resident_models(), "cli_models": cli_models,
+            "builds": coding_cli.builds_of(model, CLI_BUILDS.load(), [str(item.get("id")) for item in inventory])}
+
+
+def forget_deleted(name: str) -> None:
+    """After a delete: a coding-CLI build's record and NOVA's OPEN CLI profiles for it go too."""
+    plain = name[:-len(":latest")] if name.endswith(":latest") else name
+    item = CLI_BUILDS.load().get(plain)
+    if item is None: return
+    try:
+        removed = coding_cli.remove_profiles(plain)
+        CLI_BUILDS.forget(plain)
+    except (OSError, ValueError) as error:
+        audit("coding_cli_forget_failed", build=plain, error=str(error)[:120]); return
+    CHAT_CONTEXTS.pop(item["base"], None)
+    audit("coding_cli_forgotten", build=plain, base=item["base"], profiles=removed)
+
+
+def refresh_stale_builds() -> list[str]:
+    """Rebuild each coding-CLI build whose model was updated (0.16): the CLI then runs the new
+    model, and Ollama drops the old files no other model uses. Same context, no download."""
+    builds = CLI_BUILDS.load()
+    if not builds: return []
+    try: records = local_inventory(with_layers=True).get('records', [])
+    except (OSError, ValueError): return []
+    rebuilt = []
+    for name, base, context in coding_cli.stale_builds(builds, records):
+        try: cli_build(base, context)
+        except (RuntimeError, OSError, ValueError) as error:
+            audit("coding_cli_rebuild_failed", build=name, base=base, error=str(error)[:120]); continue
+        audit("coding_cli_rebuilt", build=name, base=base, context=context)
+        rebuilt.append(name)
+    return rebuilt
+
+
+def run_acquisition(store: Any, identifier: str) -> None:
+    store.run(identifier)
+    try: installed = store.get(identifier)['state'] == 'INSTALLED'
+    except LifecycleError: installed = False
+    if installed: refresh_stale_builds()
 
 
 def model_sharing() -> dict[str, dict[str, Any]]:
-    """For each installed model: what deleting it frees and which models share its files."""
+    """For each installed model: what deleting it frees (its coding-CLI builds go with it)
+    and which models share its files."""
     records = local_inventory(with_layers=True).get('records', [])
+    builds = CLI_BUILDS.load()
+    ids = [record['id'] for record in records]
     result = {}
     for record in records:
-        info = model_removal_sharing(record['id'], records)
+        info = model_removal_sharing(record['id'], records, coding_cli.builds_of(record['id'], builds, ids))
         if info is not None:
             result[record['id']] = info
             if record['id'].endswith(':latest'): result[record['id'][:-len(':latest')]] = info
@@ -708,7 +751,7 @@ def decide_removal(identifier: str, decision: str) -> tuple[int, dict[str, Any]]
     try:
         status, payload = REMOVALS.decide(identifier, decision, recheck=removal_inputs,
                                           delete=lambda model: PROVIDERS["ollama"].delete(model),
-                                          disk_free=settled_disk_free)
+                                          disk_free=settled_disk_free, forget=forget_deleted)
     except ProviderUnavailable:
         status, payload = 503, {"status": "failed", "error": "provider_unavailable"}
     finally:
@@ -935,7 +978,7 @@ def run_agent_loop(user_message: str, on_token: Callable[[str], None] | None = N
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "novad/0.15.0"
+    server_version = "novad/0.15.1"
     def log_message(self, _format: str, *_args: Any) -> None: return
     def send_json(self, status: HTTPStatus, payload: dict[str, Any]) -> bool:
         # Ends with a newline: the panel reads the socket line by line (BarWidget.novaRequest).
@@ -1053,11 +1096,13 @@ class Handler(BaseHTTPRequestHandler):
                 active=active_model_state()
                 models=model_inventory()
                 # A coding CLI's tailored build belongs on its model's card, not in the list (0.15).
+                # Without its model (deleted outside NOVA) it is listed, so it can be deleted (0.16).
                 builds=CLI_BUILDS.load()
+                plain=lambda name: name[:-len(":latest")] if name.endswith(":latest") else name
+                present={plain(str(entry.get("id") or "")) for entry in models}
                 for entry in models:
-                    name=str(entry.get("id") or "")
-                    build=builds.get(name[:-len(":latest")] if name.endswith(":latest") else name)
-                    if build: entry["tailored_for"]=build["base"]; entry["tailored_context"]=build["context"]
+                    build=builds.get(plain(str(entry.get("id") or "")))
+                    if build and plain(build["base"]) in present: entry["tailored_for"]=build["base"]; entry["tailored_context"]=build["context"]
                 try:
                     if hasattr(PROVIDERS[inventory_provider_id()], "running_models"):
                         resident=PROVIDERS[inventory_provider_id()].running_models()
@@ -1352,6 +1397,8 @@ def private_state_dirs(home: Path | None = None) -> list[str]:
 if __name__ == "__main__":
     private_state_dirs()
     acquisition_store()  # Reconcile durable state before accepting requests.
+    # A model updated while novad was down (or with `ollama pull`): its CLI build follows.
+    Thread(target=lambda: (time.sleep(20), refresh_stale_builds()), daemon=True).start()
     local_socket.check_loopback_peers()  # Ollama's port: only its owner gets NOVA's requests
     server = OwnerOnlyHTTPServer("novad", Handler)
     print(f"novad listening on {server.server_address}", flush=True)

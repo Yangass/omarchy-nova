@@ -7,7 +7,7 @@ from threading import Lock, Thread
 import time
 
 from acquisition_lifecycle import frozen_descriptor, LifecycleError
-from catalog_observability import OLLAMA_STORAGE, local_inventory, _read_manifest
+from catalog_observability import OLLAMA_STORAGE, local_inventory, manifest_path, read_manifest
 from ollama_readiness import write_readiness
 
 MAX_JSON = 262144
@@ -78,15 +78,14 @@ def inspect_artifact(descriptor):
         if matches[0].get('digest') != descriptor.expected_revision or local[0].get('digest') != descriptor.expected_revision:
             return {'state': 'mismatch'}
         name, tag = descriptor.artifact_id.split(':')
-        path = OLLAMA_STORAGE / 'manifests/registry.ollama.ai/library' / name / tag
-        digest = _read_manifest(path, OLLAMA_STORAGE)
-        with path.open('rb') as file: manifest = json.loads(file.read(MAX_JSON + 1))
+        path, linked = manifest_path(OLLAMA_STORAGE, name, tag)  # Ollama 0.40+: the new tree
+        digest, manifest = read_manifest(path, OLLAMA_STORAGE, linked)
         layers = manifest['layers'] + [manifest['config']]
         footprint = sum(item['size'] for item in layers)
         if digest != descriptor.expected_revision or footprint != descriptor.expected_artifact_size:
             return {'state': 'mismatch'}
         # Detect replacement during inspection as well as incomplete references.
-        if _read_manifest(path, OLLAMA_STORAGE) != digest: return {'state': 'unknown'}
+        if read_manifest(path, OLLAMA_STORAGE, linked)[0] != digest: return {'state': 'unknown'}
         return {'state': 'exact', 'revision': digest, 'footprint_bytes': footprint}
     except (OSError, http.client.HTTPException):
         return {'state': 'unknown', 'reason': 'provider_unavailable'}

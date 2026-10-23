@@ -19,10 +19,25 @@ MAX_LAYERS = 128
 STATES = ('exact', 'not_installed', 'revision_mismatch', 'ambiguous', 'unknown')
 
 
-def _read_manifest(path, root):
-    if path.is_symlink(): raise ValueError('symlink manifest not inspected')
-    with path.open('rb') as file: raw = file.read(MAX_MANIFEST_BYTES + 1)
+# Ollama 0.40 (2026-10) keeps manifests in a second tree: manifests-v2/<host>/<namespace>/
+# <model>/<tag> is a link to the manifest's own blob (named by its sha256), and pulls still
+# write the old tree with the real manifest added as one extra layer of this type. Models
+# made with `ollama create` or `cp` (NOVA's coding-CLI builds) exist only in the new tree.
+MANIFEST_LAYER = 'application/vnd.docker.distribution.manifest.v2+json'
+TREES = (('manifests-v2', 'ollama.com', True), ('manifests', 'registry.ollama.ai', False))
+
+
+def _manifest_blob(root, hexdigest):
+    """A manifest stored as a blob: a regular file whose sha256 is its name."""
+    path = root / 'blobs' / ('sha256-' + hexdigest)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(fd, 'rb') as file: raw = file.read(MAX_MANIFEST_BYTES + 1)
     if len(raw) > MAX_MANIFEST_BYTES: raise ValueError('manifest size limit')
+    if hashlib.sha256(raw).hexdigest() != hexdigest: raise ValueError('manifest blob digest mismatch')
+    return raw
+
+
+def _check_manifest(raw, root):
     value = json.loads(raw)
     if not isinstance(value, dict) or type(value.get('schemaVersion')) is not int or value['schemaVersion'] != 2:
         raise ValueError('unsupported manifest')
@@ -38,7 +53,40 @@ def _read_manifest(path, root):
         blob = root / 'blobs' / digest.replace(':', '-')
         if blob.is_symlink() or not blob.is_file() or blob.stat().st_size != size:
             raise ValueError('referenced blob unavailable or size mismatch')
-    return hashlib.sha256(raw).hexdigest()
+    return value
+
+
+def read_manifest(path, root, linked=False):
+    """(digest, manifest) of one installed model, in either Ollama layout. The digest is the
+    one Ollama reports (/api/tags) and the registry pins: the sha256 of the real manifest.
+    Links are followed only in the new tree (`linked`), and only to a manifest blob."""
+    if linked and path.is_symlink():
+        match = re.fullmatch(r'sha256-([0-9a-f]{64})', os.path.basename(os.readlink(path)))
+        if not match or path.resolve().parent != (root / 'blobs').resolve(): raise ValueError('unexpected manifest link')
+        raw = _manifest_blob(root, match.group(1))
+    else:
+        if path.is_symlink(): raise ValueError('symlink manifest not inspected')
+        with path.open('rb') as file: raw = file.read(MAX_MANIFEST_BYTES + 1)
+        if len(raw) > MAX_MANIFEST_BYTES: raise ValueError('manifest size limit')
+    value = _check_manifest(raw, root)
+    wrapped = [layer for layer in value['layers'] if layer.get('mediaType') == MANIFEST_LAYER]
+    if wrapped:
+        if linked or len(wrapped) != 1: raise ValueError('unexpected manifest layer')
+        raw = _manifest_blob(root, wrapped[0]['digest'][len('sha256:'):])
+        value = _check_manifest(raw, root)
+        if any(layer.get('mediaType') == MANIFEST_LAYER for layer in value['layers']): raise ValueError('unexpected manifest layer')
+    return hashlib.sha256(raw).hexdigest(), value
+
+
+def _read_manifest(path, root, linked=False):
+    return read_manifest(path, root, linked)[0]
+
+
+def manifest_path(root, name, tag):
+    """(path, linked) of a library model's manifest: the new tree when Ollama wrote one."""
+    root = Path(root)
+    new = root / 'manifests-v2' / 'ollama.com' / 'library' / name / tag
+    return (new, True) if os.path.lexists(new) else (root / 'manifests' / 'registry.ollama.ai' / 'library' / name / tag, False)
 
 
 def local_inventory(root=OLLAMA_STORAGE, with_layers=False):
@@ -47,53 +95,55 @@ def local_inventory(root=OLLAMA_STORAGE, with_layers=False):
     ``with_layers`` adds each model's files as ``layers`` ({blob digest: size}), so a
     delete can say what it really frees and which models share those files.
 
+    Both of Ollama's trees are read; a model in the new tree is not read again from the old.
     Partial scans never establish absence. Unexpected layouts are not guessed.
     """
     root = Path(root)
-    manifest_root = root / 'manifests'
     observed_at = datetime.now(timezone.utc).isoformat(timespec='seconds').replace('+00:00', 'Z')
     result = {'provider': 'ollama', 'source': 'local_ollama_manifests', 'status': 'ready',
               'observed_at': observed_at, 'records': [], 'errors': [],
               'note': 'Filesystem snapshot; no provider availability, residency or blob-content integrity check.'}
-    if not manifest_root.is_dir() or manifest_root.is_symlink() or (root/'blobs').is_symlink():
+    if not (root / 'manifests').is_dir() or (root / 'manifests').is_symlink() or (root/'blobs').is_symlink() \
+            or (root / 'manifests-v2').is_symlink():
         result.update(status='unavailable', errors=['local manifest storage unavailable'])
         return result
-    count = 0
+    count, seen = 0, set()
     def scan_error(_error): result['errors'].append('manifest directory unreadable')
-    for directory, dirs, files in os.walk(manifest_root, onerror=scan_error, followlinks=False):
-        base = Path(directory)
-        relative = base.relative_to(manifest_root).parts
-        for name in list(dirs):
-            if (base/name).is_symlink():
-                dirs.remove(name); result['errors'].append('symlink directory not inspected')
-        if len(relative) >= 3:
-            if dirs: result['errors'].append('unexpected manifest directory depth')
-            dirs[:] = []
-        for filename in files:
-            count += 1
-            if count > MAX_MANIFESTS:
-                result.update(status='partial'); result['errors'].append('manifest count limit')
-                return result
-            if len(relative) != 3:
-                result['errors'].append('unexpected manifest layout'); continue
-            registry, namespace, model = relative
-            # Ollama's default registry/library may be omitted in a model tag.
-            prefix = '' if registry == 'registry.ollama.ai' else registry + '/'
-            prefix += '' if registry == 'registry.ollama.ai' and namespace == 'library' else namespace + '/'
-            identifier = prefix + model + ':' + filename
-            try: digest = _read_manifest(base/filename, root)
-            except (OSError, ValueError, RecursionError):
-                result['errors'].append('manifest unreadable/invalid or referenced blobs incomplete')
-                result['records'].append({'provider': 'ollama', 'id': identifier, 'installed': None, 'digest': None})
-                continue
-            record = {'provider': 'ollama', 'id': identifier, 'installed': True, 'digest': digest}
-            if with_layers:
-                try:
-                    manifest = json.loads((base/filename).read_bytes()[:MAX_MANIFEST_BYTES + 1])
+    for tree, default_host, linked in TREES:
+        manifest_root = root / tree
+        if linked and not manifest_root.is_dir(): continue  # Ollama before 0.40
+        for directory, dirs, files in os.walk(manifest_root, onerror=scan_error, followlinks=False):
+            base = Path(directory)
+            relative = base.relative_to(manifest_root).parts
+            for name in list(dirs):
+                if (base/name).is_symlink():
+                    dirs.remove(name); result['errors'].append('symlink directory not inspected')
+            if len(relative) >= 3:
+                if dirs: result['errors'].append('unexpected manifest directory depth')
+                dirs[:] = []
+            for filename in files:
+                count += 1
+                if count > MAX_MANIFESTS:
+                    result.update(status='partial'); result['errors'].append('manifest count limit')
+                    return result
+                if len(relative) != 3:
+                    result['errors'].append('unexpected manifest layout'); continue
+                registry, namespace, model = relative
+                # Ollama's default registry/library may be omitted in a model tag.
+                prefix = '' if registry == default_host else registry + '/'
+                prefix += '' if registry == default_host and namespace == 'library' else namespace + '/'
+                identifier = prefix + model + ':' + filename
+                if identifier in seen: continue
+                seen.add(identifier)
+                try: digest, manifest = read_manifest(base/filename, root, linked)
+                except (OSError, ValueError, RecursionError):
+                    result['errors'].append('manifest unreadable/invalid or referenced blobs incomplete')
+                    result['records'].append({'provider': 'ollama', 'id': identifier, 'installed': None, 'digest': None})
+                    continue
+                record = {'provider': 'ollama', 'id': identifier, 'installed': True, 'digest': digest}
+                if with_layers:
                     record['layers'] = {layer['digest']: layer['size'] for layer in [manifest['config'], *manifest['layers']]}
-                except (OSError, ValueError, KeyError, TypeError):
-                    record['layers'] = None
-            result['records'].append(record)
+                result['records'].append(record)
     if result['errors']: result['status'] = 'partial'
     return result
 

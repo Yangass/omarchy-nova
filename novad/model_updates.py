@@ -29,7 +29,7 @@ from pathlib import Path
 import catalog_drift
 import catalog_repins
 import registry_probe
-from catalog_observability import OLLAMA_STORAGE, _read_manifest
+from catalog_observability import OLLAMA_STORAGE, manifest_path, read_manifest
 
 WEEK_SECONDS = 7 * 24 * 3600
 RETRY_SECONDS = 24 * 3600  # after a check that could not reach the registry
@@ -87,10 +87,8 @@ def local_layers(artifact_id: str, root=OLLAMA_STORAGE) -> dict | None:
         return None
     try:
         name, tag = artifact_id.split(':')
-        repo = 'library/' + name
-        path = Path(root) / 'manifests' / 'registry.ollama.ai' / repo / tag
-        _read_manifest(path, Path(root))
-        manifest = json.loads(path.read_bytes())
+        path, linked = manifest_path(root, name, tag)
+        manifest = read_manifest(path, Path(root), linked)[1]
         layers = [*manifest['layers'], manifest['config']]
         return {layer['digest']: (str(layer.get('mediaType', '')).rsplit('.', 1)[-1], int(layer['size'])) for layer in layers}
     except (OSError, ValueError, KeyError, TypeError):

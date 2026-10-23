@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.15.1
+
+- **Installing a model works again with Ollama 0.40 and newer.** Every model downloaded
+  completely, and then NOVA said "installation failed". Ollama 0.40 stores each model's
+  description in a new place. It also adds one entry to the old copy that NOVA checked, so
+  NOVA's check that the download is exactly the model it offered always failed. NOVA now
+  reads both places the way Ollama does: the new one first, and the old one through its
+  new entry. The same fix makes model updates and the "frees … GiB" figure on delete
+  correct again.
+- **A model's coding assistant goes with it.** Deleting a model now also deletes its coding
+  assistant build and its OPEN CLI, and the approval says so. Before, the build stayed
+  behind, out of sight in the model list, and kept the model's files: the delete freed
+  almost nothing. A build whose model was removed outside NOVA now shows in the list, so
+  you can delete it.
+- **After a model update, its coding assistant uses the new version.** NOVA rebuilds the
+  build with the same working context. Before, the assistant kept running the old version,
+  and the old files stayed on disk.
+
 ## 0.15.0
 
 - **A coding assistant on your own model, in one approval.** Omarchy installs OpenCode

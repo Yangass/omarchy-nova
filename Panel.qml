@@ -1753,7 +1753,8 @@ Ui.Panel {
   }
   function removalApprovalLine(item) {
     var frees = removalFreesText(item.freesBytes, item.size, item.sharedWith)
-    return (frees ? frees.charAt(0).toUpperCase() + frees.slice(1) + " · " : "") + "you can download it again later"
+    return (frees ? frees.charAt(0).toUpperCase() + frees.slice(1) + " · " : "")
+      + ((item.alsoDeletes || []).length ? "its coding CLI goes too (" + item.alsoDeletes.join(", ") + ") · " : "") + "you can download it again later"
   }
   function setRemovalStatus(model, text, failed) { removalStatusModel = model; removalStatus = text; removalFailed = failed; unloadNoteModel = "" }
   // Delete/unload results go into the chat (a deleted model's row disappears);
@@ -1778,8 +1779,12 @@ Ui.Panel {
         root.beginApproval({ id: payload.id, action: "remove_installed_model", removal: true, model: model,
           expiresAt: payload.expires_at, size: payload.size_bytes,
           freesBytes: payload.frees_bytes, sharedWith: Array.isArray(payload.shared_with) ? payload.shared_with : [],
+          alsoDeletes: Array.isArray(payload.also_deletes) ? payload.also_deletes : [],
           summary: "DELETE " + model.toUpperCase() + " FROM THIS COMPUTER",
-          impact: "Ollama deletes this model and the files only it uses; files other models use stay. NOVA's settings stay. You can download it again later." })
+          // 0.16: the model's coding CLI build (same files, its own context) goes with it.
+          impact: Array.isArray(payload.also_deletes) && payload.also_deletes.length
+            ? "Ollama deletes this model, its coding CLI build and the files only they use; files other models use stay. Its OPEN CLI goes too; your other settings stay. You can download it again later."
+            : "Ollama deletes this model and the files only it uses; files other models use stay. NOVA's settings stay. You can download it again later." })
       } else if (payload && payload.status === "blocked" && Array.isArray(payload.blockers)) {
         root.reportModelResult(model, "Not deleted: " + payload.blockers.map(root.removalBlockerText).join("; ") + ".", true)
       } else root.reportModelResult(model, "NOVA's background service didn't answer. Nothing was deleted.", false)
@@ -1838,7 +1843,8 @@ Ui.Panel {
     else if (status === 200 && payload.status === "deleted") {
       clearFinishedInstallStatus()
       var shared = Array.isArray(payload.shared_with) ? payload.shared_with : []
-      reportModelResult(model, "Deleted " + model + (typeof payload.freed_bytes === "number" ? " · freed " + transferLabel(payload.freed_bytes) : "")
+      reportModelResult(model, "Deleted " + model + (Array.isArray(payload.also_deleted) && payload.also_deleted.length ? " and its coding CLI" : "")
+        + (typeof payload.freed_bytes === "number" ? " · freed " + transferLabel(payload.freed_bytes) : "")
         + (shared.length ? " · its main files stay because " + sharedNames(shared) + " use" + (shared.length === 1 ? "s" : "") + " them" : "") + ".", false)
     } else if (payload && payload.status === "blocked" && Array.isArray(payload.blockers))
       reportModelResult(model, "Not deleted: " + payload.blockers.map(removalBlockerText).join("; ") + ".", true)

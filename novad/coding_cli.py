@@ -126,6 +126,38 @@ class Builds:
             builds[name] = {"base": base, "context": context, "created_at": int(time.time())}
             _write_json(self.path, {"schema": 1, "builds": builds})
 
+    def forget(self, name: str) -> bool:
+        """Drop a deleted build's record; False when NOVA had none."""
+        with self.lock:
+            builds = self.load()
+            if builds.pop(name, None) is None: return False
+            _write_json(self.path, {"schema": 1, "builds": builds})
+            return True
+
+
+def _plain(name: str) -> str:
+    return name[:-len(":latest")] if name.endswith(":latest") else name
+
+
+def builds_of(base: str, builds: dict[str, dict[str, Any]], installed: list[str]) -> list[str]:
+    """The installed tailored builds of `base`: they go when the model goes."""
+    present = {_plain(name) for name in installed}
+    return sorted(name for name, item in builds.items() if _plain(item["base"]) == _plain(base) and name in present)
+
+
+def stale_builds(builds: dict[str, dict[str, Any]], records: list[dict[str, Any]]) -> list[tuple[str, str, int]]:
+    """(build, base, context) for each build whose model was updated after it was made. Ollama
+    copies the model's file list at create, so the CLI would keep running the old model and its
+    old files would stay on disk. Judged by the model's largest file (its weights); a model or
+    build whose files are unknown is never called stale."""
+    layers = {_plain(r["id"]): r["layers"] for r in records if isinstance(r.get("id"), str) and isinstance(r.get("layers"), dict)}
+    stale = []
+    for name, item in sorted(builds.items()):
+        base, mine = layers.get(_plain(item["base"])), layers.get(name)
+        if not base or not mine: continue
+        if max(base, key=base.get) not in mine: stale.append((name, item["base"], item["context"]))
+    return stale
+
 
 def make_build(create: Callable[[str, str, int], None], builds: Builds, base: str, context: int) -> str:
     """Create (or retune in place) the tailored build of `base` with `context` tokens."""
@@ -195,6 +227,18 @@ def add_profile(profile: dict[str, Any], path: Path = PROFILES_PATH) -> None:
     if len(profiles) >= 16: raise ValueError("too_many_profiles")
     data["profiles"] = profiles + [profile]
     _write_json(path, data)
+
+
+def remove_profiles(build: str, path: Path = PROFILES_PATH) -> int:
+    """Remove NOVA's profiles that run `build` (deleted with its model), keeping every other
+    one; returns how many went. A file NOVA can't read safely is never overwritten."""
+    try: data = _read_json(path)
+    except FileNotFoundError: return 0
+    if not isinstance(data, dict) or data.get("schema") != 1 or not isinstance(data.get("profiles"), list): raise ValueError("invalid_profile_file")
+    kept = [item for item in data["profiles"] if not (isinstance(item, dict) and item.get("tool") in TOOLS and item.get("build") == build)]
+    if len(kept) == len(data["profiles"]): return 0
+    _write_json(path, {**data, "profiles": kept})
+    return len(data["profiles"]) - len(kept)
 
 
 def opencode_profile(base: str, build: str, command: Path, project: Path, care: str) -> dict[str, Any]:
