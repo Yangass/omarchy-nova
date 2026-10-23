@@ -5,7 +5,7 @@
   "version": "0.17.0",
   "author": "Konstantin Tarasevic",
   "license": "MIT",
-  "description": "All your local AI models in one place, without the terminal: NOVA shows which models fit your hardware, installs the one you pick, tells you when a newer build is out and updates it with your approval, gives you a private chat in the top bar, and connects OpenCode to a model you have as your own coding assistant.",
+  "description": "All your local AI models in one place, without the terminal: NOVA shows which models fit your hardware, installs the one you pick, tells you when a newer build is out and updates it with your approval, gives you a private chat in the top bar, and sets up coding assistants: OpenCode on a model you have, or Claude Code and Codex.",
   "kinds": [
     "bar-widget"
   ],

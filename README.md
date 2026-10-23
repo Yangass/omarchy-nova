@@ -6,6 +6,8 @@ NOVA is a plugin for [Omarchy](https://omarchy.org) that manages the AI models r
 on your own computer. It looks at your hardware and shows which models will actually
 run well on it, installs the one you pick, tells you when Ollama publishes a newer
 build of a model you have, and gives you a private chat in your top bar to use them.
+It also sets up coding assistants: OpenCode on one of your models, or Claude Code and
+Codex with your own account.
 
 It's made for people who are **new to Omarchy or Linux** and don't want to learn
 `ollama pull`, VRAM math and systemd before trying a local model. If you know all that
