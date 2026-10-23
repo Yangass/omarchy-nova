@@ -256,6 +256,9 @@ Ui.Panel {
   property var onboardingLimitations: []
   property string onboardingTarget: ""
   property bool onboardingRequestInFlight: false
+  // A background re-check runs with the last answer still on screen (refreshOnboarding).
+  property bool onboardingRecheckQuiet: false
+  onOnboardingRequestInFlightChanged: if (!onboardingRequestInFlight) onboardingRecheckQuiet = false
   property int onboardingRequestSerial: 0
   property bool onboardingSnapshotFresh: false
   property double onboardingReceivedAt: 0
@@ -819,13 +822,20 @@ Ui.Panel {
       "ready": acceptanceSimulationReplyShown ? "CANNED REPLY SHOWN" : "READY // NO INFERENCE"
     })[acceptanceSimulationStage] || "STARTING"
   }
-  function refreshOnboarding() {
+  // quiet: a background re-check (every 30 s while open; waiting on a CLI or a setup step).
+  // A fresh answer stays on screen until the new one arrives: blanking to CHECKING on every
+  // re-check was a jitter every 30 s on slower PCs (Konstantin's friend, 2026-10-23). Send
+  // stays bounded by the answer's 45 s age (onboardingCanSend).
+  function refreshOnboarding(quiet) {
     if (acceptancePreview) { applyAcceptancePreview(); return }
     if (onboardingRequestInFlight || !onboardingRefreshAllowed()) return
     onboardingRequestInFlight = true
-    onboardingSnapshotFresh = false
-    onboardingState = "CHECKING"
-    onboardingActions = []
+    onboardingRecheckQuiet = quiet === true && onboardingSnapshotFresh
+    if (!onboardingRecheckQuiet) {
+      onboardingSnapshotFresh = false
+      onboardingState = "CHECKING"
+      onboardingActions = []
+    }
     var serial = ++onboardingRequestSerial
     var xhr = root.novaRequest()
     var finished = false
@@ -1212,7 +1222,7 @@ Ui.Panel {
   }
   function performOnboardingAction() {
     if (acceptancePreview) { performAcceptancePreviewAction(); return }
-    if (onboardingRequestInFlight) return
+    if (onboardingRequestInFlight && !onboardingRecheckQuiet) return
     if (!onboardingSnapshotFresh) {
       if (onboardingHasAction("RETRY_CHECK")) refreshOnboarding()
       return
@@ -2800,7 +2810,10 @@ Ui.Panel {
       if (xhr.readyState !== XMLHttpRequest.DONE) return
       var payload = null
       try { payload = xhr.status === 200 ? JSON.parse(xhr.responseText) : null } catch (error) { payload = null }
-      root.cliState = payload && Array.isArray(payload.profiles) ? payload : null
+      payload = payload && Array.isArray(payload.profiles) ? payload : null
+      // Each answer has a new checked_at; only a real change replaces cliState, so the CLI
+      // rows aren't rebuilt every 5 s (a rebuild drops hover and can nudge the list).
+      if (root.cliStateKey(payload) !== root.cliStateKey(root.cliState)) root.cliState = payload
       // A reason shown for an unavailable CLI ("already running") is stale once
       // that CLI is available again, e.g. after the user closed the session.
       if (root.cliStatusIsReason && root.cliStatus !== "" && root.cliState && root.cliState.profiles.some(function(profile) {
@@ -2818,6 +2831,12 @@ Ui.Panel {
       xhr.timeout = 6000
       xhr.send()
     } catch (error) { cliState = null }
+  }
+  function cliStateKey(state) {
+    if (!state) return ""
+    var copy = Object.assign({}, state)
+    delete copy.checked_at
+    return JSON.stringify(copy)
   }
   // Online coding CLIs (ONLINE-01): Claude Code, Codex. They sign in by themselves;
   // NOVA stores no keys and they never touch NOVA's chat model. Each is shown as a
@@ -3786,7 +3805,7 @@ Ui.Panel {
       root.refreshCliProfiles()
       // The CLI's first request loads the model; re-check so READY appears by itself.
       if ((root.onboardingState === "NEEDS_LOAD" || root.onboardingState === "NEEDS_ACTIVATION") && root.cliLoadingModel(root.onboardingTarget))
-        root.refreshOnboarding()
+        root.refreshOnboarding(true)
     }
   }
   Timer {
@@ -3796,7 +3815,7 @@ Ui.Panel {
     interval: 4000; repeat: true
     onTriggered: {
       ollamaUnit.reload(); novaSetupScript.reload()
-      root.refreshOnboarding()
+      root.refreshOnboarding(true)
       if (++ticks > 45 || (root.setupLaunched !== "" && root.setupStep() !== null && root.setupStep().id !== root.setupLaunched)) {
         stop(); root.setupLaunched = ""
       }
@@ -3815,7 +3834,7 @@ Ui.Panel {
   Timer { id: chatResetDeadline; interval: 5000; onTriggered: root.chatResetDeadlineReached() }
   Timer { id: approvalExpiryTimer; repeat: false; onTriggered: root.markApprovalExpired() }
   Timer { id: acceptanceSimulationTimer; interval: 2500; onTriggered: root.advanceAcceptanceSimulation() }
-  Timer { interval: 30000; running: root.opened && !root.acceptancePreview; repeat: true; onTriggered: root.refreshOnboarding() }
+  Timer { objectName: "onboardingRecheck"; interval: 30000; running: root.opened && !root.acceptancePreview; repeat: true; onTriggered: root.refreshOnboarding(true) }
   ListModel { id: chatHistoryModel }
 
   // MODELS v2: a fact as one word in a thin frame (FITS, TIGHT, TOO BIG, SUGGESTED…).
@@ -4653,7 +4672,7 @@ Ui.Panel {
                   accent: root.accent
                   bordered: true
                   focusable: true
-                  enabled: visible && !root.onboardingRequestInFlight && !root.chatBusy && !root.modelTransitionActive && root.pendingApproval === null
+                  enabled: visible && !(root.onboardingRequestInFlight && !root.onboardingRecheckQuiet) && !root.chatBusy && !root.modelTransitionActive && root.pendingApproval === null
                   Accessible.name: text
                   onClicked: root.performOnboardingAction()
                 }
@@ -5709,6 +5728,7 @@ Ui.Panel {
                         Text { textFormat: Text.PlainText; id: installedModelId; objectName: "installedModelId"; width: Math.min(installedNameMetrics.advanceWidth + 2, Math.max(Style.space(60), parent.nameRoom)); wrapMode: Text.Wrap; font.bold: true; text: root.modelPlainName(modelData.id); color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; font.letterSpacing: 0.4 }
                         Rectangle {
                           id: inUseTag
+                          objectName: "inUseTag"
                           visible: root.installedModelSelected(modelData)
                           anchors.left: installedModelId.right; anchors.leftMargin: Style.spacing.sm; y: Style.space(2)
                           width: inUseText.implicitWidth + Style.space(8); height: inUseText.implicitHeight + Style.space(2)
@@ -6360,8 +6380,8 @@ Ui.Panel {
                     // MODELS v2: one line per online CLI: name, project, OPEN CLI.
                     Item {
                       width: parent.width; height: Math.max(onlineCliName.implicitHeight, onlineCliOpenButton.height)
-                      Text { id: onlineCliName; anchors.verticalCenter: parent.verticalCenter; width: Style.space(120); elide: Text.ElideRight; textFormat: Text.PlainText; text: onlineCliRow.profile ? onlineCliRow.profile.label : ""; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; font.letterSpacing: 0.4 }
-                      Text { anchors.left: onlineCliName.right; anchors.right: onlineCliOpenButton.left; anchors.rightMargin: Style.spacing.sm; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight; textFormat: Text.PlainText; text: onlineCliRow.profile ? onlineCliRow.profile.project_label : ""; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                      Text { id: onlineCliName; objectName: "onlineCliName"; anchors.verticalCenter: parent.verticalCenter; width: Math.min(implicitWidth, parent.width * 0.55); elide: Text.ElideRight; textFormat: Text.PlainText; text: onlineCliRow.profile ? onlineCliRow.profile.label : ""; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; font.letterSpacing: 0.4 }
+                      Text { anchors.left: onlineCliName.right; anchors.leftMargin: Style.spacing.md; anchors.right: onlineCliOpenButton.left; anchors.rightMargin: Style.spacing.sm; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight; textFormat: Text.PlainText; text: onlineCliRow.profile ? onlineCliRow.profile.project_label : ""; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                     CompactModelButton {
                       id: onlineCliOpenButton
                       anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter

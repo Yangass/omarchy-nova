@@ -69,6 +69,22 @@ class OllamaProvider:
         # The working context NOVA runs a model with (novad sets it: the fit's recommendation);
         # None leaves Ollama's default (4096 for most library models) or the model's own num_ctx.
         self.context_for: Callable[[str], int | None] | None = None
+        # A model's tailored builds (novad sets it). A build and its model share one loaded
+        # copy (same files, same context), and /api/ps names it after whichever loaded it:
+        # while OpenCode runs, only its build is listed (2026-10-23, Ollama 0.40.7).
+        self.builds_of: Callable[[str], list[str]] | None = None
+    def copy_names(self, model: str) -> set[str]:
+        """The names Ollama may list `model`'s loaded copy under: its own and its builds'."""
+        try: builds = list(self.builds_of(model)) if self.builds_of else []
+        except Exception: builds = []
+        return {model, *builds, *(name + ":latest" for name in builds if ":" not in name)}
+    def resident_copy(self, model: str, running: list[dict[str, Any]]) -> dict[str, Any] | None:
+        """The /api/ps row `model` answers from: its own, else one of its builds'."""
+        rows = [row for row in running if isinstance(row, dict)]
+        own = next((row for row in rows if model in (row.get("name"), row.get("model"))), None)
+        if own is not None: return own
+        names = self.copy_names(model)
+        return next((row for row in rows if row.get("name") in names or row.get("model") in names), None)
     def _json(self, path: str, timeout: int = 3) -> tuple[int, dict[str, Any]]:
         try:
             with urllib.request.urlopen(self.base_url + path, timeout=timeout) as response:

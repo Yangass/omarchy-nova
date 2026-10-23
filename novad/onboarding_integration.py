@@ -152,7 +152,7 @@ def _inventory(models, available):
                              tuple(sorted(set(identities)))), duplicates or malformed
 
 
-def _selection(config, inventory, running, runtime_available):
+def _selection(config, inventory, running, runtime_available, copy_names=None):
     if config.state != 'VALID':
         return SelectionSnapshot(config.state, None, 'UNKNOWN', None)
     if inventory.state != 'KNOWN':
@@ -161,8 +161,10 @@ def _selection(config, inventory, running, runtime_available):
     artifact = 'INSTALLED_EXACT' if len(matches) == 1 else 'NOT_INSTALLED'
     if artifact != 'INSTALLED_EXACT' or runtime_available is not True:
         return SelectionSnapshot('VALID', config.model, artifact, None if runtime_available is not True else False)
+    # Loaded as its coding CLI build counts: chat answers from that same copy.
+    names = copy_names(config.model) if copy_names else {config.model}
     resident = any(isinstance(row, dict) and
-                   (row.get('name') == config.model or row.get('model') == config.model)
+                   (row.get('name') in names or row.get('model') in names)
                    for row in running)
     return SelectionSnapshot('VALID', config.model, artifact, resident)
 
@@ -328,7 +330,8 @@ def collect_onboarding_state(*, config_path, providers, default_provider,
                 running, runtime_available = [], False
 
     inventory, inventory_conflict = _inventory(models, provider_state == 'AVAILABLE')
-    selection = _selection(config, inventory, running, runtime_available)
+    selection = _selection(config, inventory, running, runtime_available,
+                           getattr(adapter, 'copy_names', None) if adapter is not None else None)
 
     profile = None
     if clock() <= deadline:

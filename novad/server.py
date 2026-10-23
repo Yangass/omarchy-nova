@@ -188,6 +188,12 @@ def chat_context(model_id: str) -> int | None:
 
 PROVIDERS["ollama"].context_for = chat_context
 
+def chat_builds(model_id: str) -> list[str]:
+    build = CLI_BUILDS.for_base(model_id) or (CLI_BUILDS.for_base(model_id + ":latest") if ":" not in model_id else None)
+    return [build[0]] if build else []
+
+PROVIDERS["ollama"].builds_of = chat_builds
+
 # --- a coding CLI for everyone (0.15): see coding_cli.py ---
 CLI_BUILDS = coding_cli.Builds()
 CLI_PROPOSALS = coding_cli.Proposals()
@@ -409,7 +415,9 @@ def active_model_state() -> dict[str, Any]:
                 "error":"model_selection_required"}
     try:
         models = model_inventory()
-        runtime_ready = provider.is_loaded(ACTIVE_MODEL)
+        # Loaded as its coding CLI build counts: chat answers from that same copy.
+        runtime_ready = (provider.resident_copy(ACTIVE_MODEL, provider.running_models()) is not None
+                         if hasattr(provider, "resident_copy") else provider.is_loaded(ACTIVE_MODEL))
     except ProviderUnavailable: return {"provider":ACTIVE_PROVIDER,"model":ACTIVE_MODEL,"available":False,"error":"provider_unavailable"}
     selected = next((item for item in models if item["id"] == ACTIVE_MODEL), None)
     if selected is None: return {"provider":ACTIVE_PROVIDER,"model":ACTIVE_MODEL,"available":False,"error":"active_model_missing"}
@@ -720,11 +728,14 @@ def unload_model(model: str) -> tuple[int, dict[str, Any]]:
     try: resident = PROVIDERS[inventory_provider_id()].running_models()
     except (ProviderUnavailable, ProviderOperationFailed):
         return HTTPStatus.SERVICE_UNAVAILABLE, {"status": "failed", "model": model}
-    entry = next((item for item in resident if (item.get("name") or item.get("model")) == model), None)
+    provider = PROVIDERS[inventory_provider_id()]
+    entry = provider.resident_copy(model, resident) if hasattr(provider, "resident_copy") else \
+        next((item for item in resident if (item.get("name") or item.get("model")) == model), None)
     if entry is None:
         audit("model_unload", model=model, status="not_loaded")
         return HTTPStatus.OK, {"status": "not_loaded", "model": model}
-    try: PROVIDERS[inventory_provider_id()].unload(model)
+    # Loaded as its coding build (OpenCode's), the copy goes under the build's name.
+    try: provider.unload(entry.get("name") or entry.get("model") or model)
     except (ProviderOperationFailed, ProviderUnavailable):
         audit("model_unload", model=model, status="failed")
         return HTTPStatus.BAD_GATEWAY, {"status": "failed", "model": model}
@@ -978,7 +989,7 @@ def run_agent_loop(user_message: str, on_token: Callable[[str], None] | None = N
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "novad/0.16.0"
+    server_version = "novad/0.16.1"
     def log_message(self, _format: str, *_args: Any) -> None: return
     def send_json(self, status: HTTPStatus, payload: dict[str, Any]) -> bool:
         # Ends with a newline: the panel reads the socket line by line (BarWidget.novaRequest).
@@ -1105,15 +1116,17 @@ class Handler(BaseHTTPRequestHandler):
                     if build and plain(build["base"]) in present: entry["tailored_for"]=build["base"]; entry["tailored_context"]=build["context"]
                 try:
                     if hasattr(PROVIDERS[inventory_provider_id()], "running_models"):
-                        resident=PROVIDERS[inventory_provider_id()].running_models()
-                        vram={item.get("name") or item.get("model"): item.get("size_vram") for item in resident}
-                        mem={item.get("name") or item.get("model"): item.get("size") for item in resident}
+                        provider=PROVIDERS[inventory_provider_id()]
+                        resident=provider.running_models()
                         for entry in models:
                             name=entry.get("id")
-                            resident_map_value=name in vram
-                            entry["resident"]=resident_map_value
-                            entry["vram_bytes"]=vram.get(name) if resident_map_value else None
-                            entry["memory_bytes"]=byte_count(mem.get(name)) if resident_map_value else None
+                            row=next((item for item in resident if (item.get("name") or item.get("model")) == name), None)
+                            # A model loaded as its coding build is in memory too (the panel hides builds).
+                            if row is None and not entry.get("tailored_for") and hasattr(provider, "resident_copy"): row=provider.resident_copy(name, resident)
+                            entry["resident"]=row is not None
+                            entry["vram_bytes"]=row.get("size_vram") if row is not None else None
+                            entry["memory_bytes"]=byte_count(row.get("size")) if row is not None else None
+                            if row is not None and (row.get("name") or row.get("model")) != name: entry["resident_as"]=row.get("name") or row.get("model")
                     else:
                         for entry in models: entry["resident"]=None; entry["vram_bytes"]=None; entry["memory_bytes"]=None
                 except (ProviderUnavailable, ProviderOperationFailed):

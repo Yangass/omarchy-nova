@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.16.1
+
+- **No more jitter every 30 seconds.** While the panel is open, NOVA checks its setup again
+  every 30 seconds. During each check the panel switched to "checking": the MODEL line, the
+  IN USE tag and some buttons blinked for as long as the answer took. On a slower computer
+  that was a visible jump. Now the panel keeps showing the last answer until the new one
+  arrives, and changes only what changed.
+- **No LOAD AND VERIFY while OpenCode runs.** OpenCode and NOVA's chat share one copy of
+  the model in memory, but Ollama lists that copy under the coding build's name. NOVA didn't
+  recognise it, so it said the model wasn't loaded and offered LOAD AND VERIFY, and MACHINE
+  showed nothing in GPU memory. Now the model's card and MACHINE show it in GPU memory, chat
+  knows it is ready, and unloading it frees that copy.
+- **The coding CLI rows no longer rebuild every 5 seconds** when nothing changed.
+- **Online CLI names show in full.** "Claude Code · NOVA" was cut to "Claude Code · NO…".
+
 ## 0.16.0
 
 - **MODELS reads at a glance.** Each model is a card: the model on top, its coding CLI
