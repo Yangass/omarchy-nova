@@ -11,6 +11,10 @@
 # While a local model is generating (e.g. a Qwen worker session), the full run is slow
 # and several checks time out (2026-10-12: 7 failed, all passed rerun in small batches);
 # rerun failures a few at a time before blaming a change.
+# 2026-10-23: a nested Hyprland's screen is its window, so the checks' geometry followed whatever
+# else was on the workspace it opened on (the "geometry pair" above). The host now has a window
+# rule for class aquamarine in ~/.config/hypr/hyprland.lua: workspace 5 silent, no initial focus,
+# render_unfocused, floating 1920x1080. Full run with it: 30/31 (fast_stream timed out once).
 set -uo pipefail
 tools=$(cd -- "$(dirname -- "$0")" && pwd)
 work=$(mktemp -d "${TMPDIR:-/tmp}/nova-qml-checks.XXXXXX")

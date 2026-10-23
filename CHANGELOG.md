@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.17.0
+
+- **Claude Code and Codex in one approval.** Omarchy installs both. **ONLINE CLIS** now
+  offers each one that isn't set up yet: **SET UP**, choose the folder, approve, and OPEN CLI
+  opens it there. They sign in with your own account in the terminal; NOVA stores no keys.
+  Before, they showed only if you had written NOVA's settings file by hand.
+- **NOVA sees a running OpenCode.** Its row says **CLI RUNNING**, and NOVA won't unload or
+  delete the model it is using, or remove NOVA, while it runs. Before, NOVA couldn't tell
+  that OpenCode was open.
+
 ## 0.16.1
 
 - **No more jitter every 30 seconds.** While the panel is open, NOVA checks its setup again

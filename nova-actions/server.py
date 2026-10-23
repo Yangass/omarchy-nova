@@ -312,9 +312,31 @@ def cli_place(project: str) -> str:
     if path == home: return "~"
     try: return "~/" + str(path.relative_to(home))
     except ValueError: return "…/" + path.name
+def opencode_running_builds(proc: Path = Path("/proc")) -> set[str]:
+    """The builds an OpenCode NOVA opened is running on. NOVA hands OpenCode its settings at
+    launch (OPENCODE_CONFIG_CONTENT), so that OpenCode's processes carry them. Only this
+    user's processes are read, and only that one variable's model is kept."""
+    found: set[str] = set()
+    try: entries = [entry for entry in os.scandir(proc) if entry.name.isdigit()]
+    except OSError: return found
+    for entry in entries:
+        try:
+            if entry.stat(follow_symlinks=False).st_uid != USER_UID: continue
+            with open(os.path.join(entry.path, "environ"), "rb") as file: data = file.read(262_144)
+        except OSError: continue
+        start = data.find(b"OPENCODE_CONFIG_CONTENT=")
+        if start != 0 and (start < 0 or data[start - 1:start] != b"\0"): continue
+        raw = data[start + len("OPENCODE_CONFIG_CONTENT="):].split(b"\0", 1)[0]
+        try: model = json.loads(raw.decode()).get("model")
+        except (ValueError, UnicodeDecodeError, AttributeError): continue
+        if isinstance(model, str) and model.startswith("ollama/"):
+            name = model[len("ollama/"):]
+            found.add(name[:-len(":latest")] if name.endswith(":latest") else name)
+    return found
 def list_cli_profiles() -> dict[str, Any]:
     entries, error = load_cli_profiles()
     last_used = cli_last_used()
+    opencode_builds = opencode_running_builds() if any(raw.get("tool") == "opencode" for raw, _profile, _problem in entries) else set()
     profiles = []
     for raw, profile, problem in entries:
         place = cli_place(profile["project"]) if profile else None
@@ -323,7 +345,8 @@ def list_cli_profiles() -> dict[str, Any]:
             public.update(kind="online", valid=profile is not None, error=problem, running=False, project_sync="not_applicable")
         elif raw.get("tool") == "opencode":
             public = {key: raw.get(key) for key in ("id", "label", "tool", "provider", "model", "build", "project_label", "care") if isinstance(raw.get(key), str)}
-            public.update(kind="opencode", valid=profile is not None, error=problem, running=False, project_sync="not_applicable")
+            public.update(kind="opencode", valid=profile is not None, error=problem, running=bool(profile) and profile["build"] in opencode_builds,
+                          project_sync="not_applicable")
         else:
             public = {key: raw.get(key) for key in ("id", "label", "tool", "provider", "model", "project_label") if isinstance(raw.get(key), str)}
             public.update(kind="local", valid=profile is not None, error=problem, running=bool(profile) and cli_project_locked(profile),

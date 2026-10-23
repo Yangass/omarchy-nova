@@ -26,7 +26,8 @@ QML_CHECK = r'''
       }
       check(item!==null,"Missing "+name); return item
     }
-    function click(item) { var c=child("panelKeyCatcher"), p=item.mapToItem(c,item.width/2,item.height/2); mouseClick(c,p.x,p.y,Qt.LeftButton) }
+    // Settle first: a card that just appeared may still be moving (2026-10-23: at a fixed 1920x1080 the click landed mid-way).
+    function click(item) { wait(150); var c=child("panelKeyCatcher"), p=item.mapToItem(c,item.width/2,item.height/2); mouseClick(c,p.x,p.y,Qt.LeftButton) }
     function clickModelControl(name) {
       if (!novaPanel.catalogDownloadsExpanded) {
         var browse=child("browseModelDownloadsButton"), browserList=child("modelList")

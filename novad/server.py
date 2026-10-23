@@ -236,6 +236,44 @@ def cli_setup_state(model: str) -> tuple[int, dict[str, Any]]:
     return HTTPStatus.OK, {**state, "tools": tools, "projects": coding_cli.candidate_projects(),
                            "care": list(coding_cli.CARE), "profile_id": profile}
 
+def downloads_on_first_start(binary: str) -> bool:
+    return not (Path.home() / ".local/share/mise/installs" / binary).is_dir()
+
+def online_tools_state(profiles: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Claude Code and Codex: whether Omarchy's launcher is here and whether an OPEN CLI exists."""
+    set_up = {p.get("tool") for p in profiles if isinstance(p, dict) and p.get("kind") == "online"}
+    return [{"id": tool, "label": spec["label"], "available": coding_cli.tool_command(tool) is not None, "set_up": tool in set_up}
+            for tool, spec in coding_cli.ONLINE_TOOLS.items()]
+
+def online_setup_state() -> tuple[int, dict[str, Any]]:
+    tools = [{"id": tool, "label": spec["label"], "available": coding_cli.tool_command(tool) is not None,
+              "downloads_on_first_start": downloads_on_first_start(spec["binary"])}
+             for tool, spec in coding_cli.ONLINE_TOOLS.items()]
+    return HTTPStatus.OK, {"tools": tools, "projects": coding_cli.candidate_projects()}
+
+def online_setup_proposal(value: Any) -> tuple[int, dict[str, Any]]:
+    if not isinstance(value, dict) or set(value) != {"tool", "project"} or value["tool"] not in coding_cli.ONLINE_TOOLS:
+        return HTTPStatus.BAD_REQUEST, {"error": "invalid_setup_request"}
+    tool, spec = value["tool"], coding_cli.ONLINE_TOOLS[value["tool"]]
+    command = coding_cli.tool_command(tool)
+    if command is None: return HTTPStatus.CONFLICT, {"error": "tool_unavailable"}
+    project = coding_cli.project_ok(value["project"])
+    if project is None: return HTTPStatus.BAD_REQUEST, {"error": "project_unavailable"}
+    profile, label = coding_cli.online_profile(tool, command, project), spec["label"]
+    changes = [f"Add OPEN CLI for {label} under ONLINE CLIS. It opens in {profile['project_label']}.",
+               f"It runs online: what you type goes to {spec['service']} under your own account. NOVA stores no keys and never sees your sign-in.",
+               f"The first OPEN CLI installs {label} (Omarchy's launcher; the terminal shows the progress), then asks you to sign in."
+               if downloads_on_first_start(spec["binary"]) else f"{label} asks you to sign in the first time, if you haven't yet."]
+    def execute(_decision: str) -> dict[str, Any]:
+        coding_cli.add_profile(profile)
+        audit("coding_cli_online_setup", profile_id=profile["id"])
+        return {"status": "online_set_up", "profile_id": profile["id"], "label": label, "project_label": profile["project_label"]}
+    item = CLI_PROPOSALS.create({"action": "coding_cli_online_setup", "summary": f"Set up {label} in {profile['project_label']}",
+                                 "impact": "NOVA makes exactly these changes; nothing else on your computer changes.",
+                                 "changes": changes, "model": "online:" + profile["id"]}, execute)
+    audit("proposal_created", id=item["id"], action="coding_cli_online_setup")
+    return HTTPStatus.CREATED, item
+
 def cli_build(base: str, context: int) -> None:
     def create(name: str, from_model: str, tokens: int) -> None:
         try: PROVIDERS["ollama"].create_build(name, from_model, tokens)
@@ -851,6 +889,7 @@ def cli_profiles_state() -> tuple[int, dict[str, Any]]:
         profiles.append({**item, "available": blocked is None, "blocked": blocked,
                          "conflicting_models": [n for n in resident or [] if n != item.get("model")]})
     return HTTPStatus.OK, {"configured": payload.get("configured") is True, "error": payload.get("error"), "profiles": profiles,
+                           "online_tools": online_tools_state(profiles),
                            "client_active": payload.get("client_active") is True, "checked_at": utc_now()}
 
 
@@ -989,7 +1028,7 @@ def run_agent_loop(user_message: str, on_token: Callable[[str], None] | None = N
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "novad/0.16.1"
+    server_version = "novad/0.17.0"
     def log_message(self, _format: str, *_args: Any) -> None: return
     def send_json(self, status: HTTPStatus, payload: dict[str, Any]) -> bool:
         # Ends with a newline: the panel reads the socket line by line (BarWidget.novaRequest).
@@ -1034,6 +1073,10 @@ class Handler(BaseHTTPRequestHandler):
                 status, payload = chat_session_error(error)
                 self.send_json(status, payload)
             return
+        if parsed.path == '/cli/setup/online':
+            if parsed.query or not self.empty_request_body():
+                self.send_json(HTTPStatus.BAD_REQUEST, {'error': 'invalid_coding_cli_request'}); return
+            status, payload = online_setup_state(); self.send_json(HTTPStatus(status), payload); return
         if parsed.path in ('/cli/setup', '/cli/tune', '/cli/self'):
             query = parse_qs(parsed.query, max_num_fields=2)
             key = 'build' if parsed.path == '/cli/self' else 'model'
@@ -1156,14 +1199,15 @@ class Handler(BaseHTTPRequestHandler):
         else: self.send_json(HTTPStatus.NOT_FOUND, {"error": "Unknown endpoint."})
     def do_POST(self) -> None:
         parsed = urlsplit(self.path)
-        if parsed.path in ('/cli/setup/proposals', '/cli/tune', '/cli/self/proposals'):
+        if parsed.path in ('/cli/setup/proposals', '/cli/setup/online/proposals', '/cli/tune', '/cli/self/proposals'):
             try: size = int(self.headers.get('Content-Length') or '0')
             except ValueError: size = -1
             if parsed.query or not 0 < size <= 4096 or self.headers.get('Transfer-Encoding'):
                 self.send_json(HTTPStatus.BAD_REQUEST, {'error': 'invalid_coding_cli_request'}); return
             try: value = json.loads(self.rfile.read(size).decode())
             except (ValueError, UnicodeDecodeError): value = None
-            handler = {'/cli/setup/proposals': cli_setup_proposal, '/cli/tune': cli_tune_apply, '/cli/self/proposals': cli_self_proposal}[parsed.path]
+            handler = {'/cli/setup/proposals': cli_setup_proposal, '/cli/setup/online/proposals': online_setup_proposal,
+                       '/cli/tune': cli_tune_apply, '/cli/self/proposals': cli_self_proposal}[parsed.path]
             status, payload = handler(value); self.send_json(HTTPStatus(status), payload); return
         if parsed.path == '/chat/sessions':
             if parsed.query or not self.empty_request_body():

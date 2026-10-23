@@ -26,6 +26,10 @@ PROFILES_PATH = CONFIG_DIR / "cli-profiles.json"
 # Working contexts NOVA offers (tokens). Past the model's own maximum is allowed with a warning.
 STEPS = (4096, 8192, 12288, 16384, 24576, 32768, 40960, 49152, 65536, 98304, 131072, 196608, 262144)
 TOOLS = {"opencode": {"label": "OpenCode", "binary": "opencode"}}
+# Online coding CLIs (ONLINE-01 step 2): Omarchy ships launchers for both; NOVA adds their
+# OPEN CLI in one approval. They sign in themselves; NOVA stores no keys.
+ONLINE_TOOLS = {"claude-code": {"label": "Claude Code", "binary": "claude", "service": "Anthropic"},
+                "codex": {"label": "Codex", "binary": "codex", "service": "OpenAI"}}
 CARE = {"ask": {"edit": "ask", "bash": "ask"}, "edits": {"edit": "allow", "bash": "ask"}}
 PROPOSAL_TTL_SECONDS = 120
 MAX_BUILDS = 32
@@ -171,7 +175,7 @@ def make_build(create: Callable[[str, str, int], None], builds: Builds, base: st
 # --- the OPEN CLI profile ----------------------------------------------------------------------
 def tool_command(tool: str, home: Path | None = None) -> Path | None:
     """Omarchy's wrapper for the tool (~/.local/bin/<name>, which installs it on first run)."""
-    spec = TOOLS.get(tool)
+    spec = TOOLS.get(tool) or ONLINE_TOOLS.get(tool)
     if spec is None: return None
     path = (home or Path.home()) / ".local" / "bin" / spec["binary"]
     try: info = path.lstat()
@@ -241,8 +245,18 @@ def remove_profiles(build: str, path: Path = PROFILES_PATH) -> int:
     return len(data["profiles"]) - len(kept)
 
 
+def _place(project: Path) -> str:
+    return "~/" + str(project.relative_to(Path.home().resolve())) if project.is_relative_to(Path.home().resolve()) else project.name
+
+
+def online_profile(tool: str, command: Path, project: Path) -> dict[str, Any]:
+    """NOVA's OPEN CLI for an online tool: one per tool (setting it up again moves it)."""
+    return {"id": tool, "label": ONLINE_TOOLS[tool]["label"], "tool": tool, "provider": "online",
+            "command": str(command), "project": str(project), "project_label": _place(project)}
+
+
 def opencode_profile(base: str, build: str, command: Path, project: Path, care: str) -> dict[str, Any]:
-    place = "~/" + str(project.relative_to(Path.home().resolve())) if project.is_relative_to(Path.home().resolve()) else project.name
+    place = _place(project)
     return {"id": profile_id("opencode", base), "label": "OpenCode", "tool": "opencode", "provider": "ollama",
             "model": base, "build": build, "command": str(command), "project": str(project),
             "project_label": place, "care": care}

@@ -2639,6 +2639,15 @@ Ui.Panel {
   property string cliSetupCare: "ask"
   property string cliSetupError: ""
   property bool cliSetupBusy: false
+  // ONLINE-01 step 2 (2026-10-23): Claude Code and Codex, offered when Omarchy's launcher is
+  // here and no OPEN CLI exists yet; SET UP = a folder, then one approval.
+  readonly property var onlineCliOffers: !cliState || !Array.isArray(cliState.online_tools) ? [] : cliState.online_tools.filter(function(tool) {
+      return tool && typeof tool.id === "string" && tool.available === true && tool.set_up !== true })
+  property string onlineSetupTool: ""
+  property var onlineSetupState: null
+  property string onlineSetupProject: ""
+  property string onlineSetupError: ""
+  property bool onlineSetupBusy: false
   property string cliTuneModel: ""
   property var cliTuneState: null
   property int cliTuneIndex: 0
@@ -2699,7 +2708,42 @@ Ui.Panel {
       xhr.send(value ? JSON.stringify(value) : undefined)
     } catch (error) { finish(0, "") }
   }
+  function openOnlineSetup(tool) {
+    if (onlineSetupTool === tool.id) { onlineSetupTool = ""; return }
+    cliSetupModel = ""; cliTuneModel = ""
+    onlineSetupTool = tool.id; onlineSetupState = null; onlineSetupError = ""; onlineSetupProject = ""
+    if (acceptancePreview) return
+    novaJson("GET", "/cli/setup/online", null, 10000, function(status, payload) {
+      if (onlineSetupTool !== tool.id) return
+      if (status !== 200) { onlineSetupError = "NOVA couldn't prepare the setup (" + String(payload.error || "no answer").replace(/_/g, " ") + ")."; return }
+      onlineSetupState = payload
+      onlineSetupProject = Array.isArray(payload.projects) && payload.projects.length ? payload.projects[0] : ""
+    })
+  }
+  function onlineSetupToolState() {
+    var tools = onlineSetupState && Array.isArray(onlineSetupState.tools) ? onlineSetupState.tools : []
+    for (var i = 0; i < tools.length; ++i) if (tools[i] && tools[i].id === onlineSetupTool) return tools[i]
+    return null
+  }
+  function proposeOnlineSetup() {
+    var tool = onlineSetupToolState()
+    if (!onlineSetupState || onlineSetupBusy || onlineSetupProject === "" || !tool || tool.available !== true || pendingApproval) return
+    onlineSetupBusy = true; onlineSetupError = ""
+    novaJson("POST", "/cli/setup/online/proposals", { tool: tool.id, project: onlineSetupProject }, 15000, function(status, payload) {
+      onlineSetupBusy = false
+      if (status === 201 && typeof payload.id === "string") {
+        onlineSetupTool = ""
+        var shown = cliApprovalsShown; shown[payload.id] = true; cliApprovalsShown = shown
+        beginApproval(payload)
+        return
+      }
+      onlineSetupError = ({tool_unavailable: tool.label + " isn't on this computer any more. Omarchy installs it; run Omarchy's update, then try again.",
+                           project_unavailable: "That folder isn't available any more. Choose another."})[payload.error]
+        || ("Setup couldn't start: " + String(payload.error || "no answer").replace(/_/g, " ") + ".")
+    })
+  }
   function openCliSetup(item) {
+    onlineSetupTool = ""
     cliTuneModel = ""; cliSetupModel = item.id; cliSetupState = null; cliSetupError = ""; cliSetupCare = "ask"; cliSetupProject = ""
     if (acceptancePreview) return
     novaJson("GET", "/cli/setup?model=" + encodeURIComponent(item.id), null, 10000, function(status, payload) {
@@ -2738,6 +2782,7 @@ Ui.Panel {
   function cliTuneTokens() { var steps = cliTuneSteps(); return steps[Math.max(0, Math.min(steps.length - 1, cliTuneIndex))] }
   function cliTuneVerdict() { return cliTuneState ? cliVerdict(cliTuneState.numbers, cliTuneTokens()) : null }
   function openCliTune(item) {
+    onlineSetupTool = ""
     cliSetupModel = ""; cliTuneModel = item.id; cliTuneState = null; cliTuneConfirm = false; cliTuneError = ""
     if (acceptancePreview) return
     novaJson("GET", "/cli/tune?model=" + encodeURIComponent(item.id), null, 10000, function(status, payload) {
@@ -2793,6 +2838,11 @@ Ui.Panel {
       refreshCliProfiles()
       cliStatusModel = next.model; cliStatus = "Set up · OPEN CLI opens OpenCode (" + contextLabel(payload.context) + " working context)."; cliStatusFailed = false; cliStatusIsReason = false
       // The approval took the panel to CHAT; the result (and OPEN CLI) is on the model's card.
+      showView("models")
+    } else if (status === 200 && outcome === "online_set_up") {
+      approvalFeedback = payload.label + " set up: OPEN CLI under ONLINE CLIS opens it in " + payload.project_label + ". Its first start may install it and asks you to sign in."
+      refreshCliProfiles()
+      cliStatusModel = next.model; cliStatus = "Set up · OPEN CLI opens " + payload.label + " in " + payload.project_label + "."; cliStatusFailed = false; cliStatusIsReason = false
       showView("models")
     } else if (status === 200 && outcome === "changed") approvalFeedback = "Working context is now " + contextLabel(payload.context) + ". The coding CLI uses it from its next message."
     else if (status === 200 && outcome === "denied") approvalFeedback = "Declined. Nothing changed."
@@ -6362,12 +6412,12 @@ Ui.Panel {
                 id: onlineCliSection
                 objectName: "onlineCliSection"
                 width: parent.width
-                visible: root.onlineCliItems.length > 0
+                visible: root.onlineCliItems.length + root.onlineCliOffers.length > 0
                 spacing: Style.spacing.xs
                 Rectangle { width: parent.width; height: 1; color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.16) }
                 Row {
                   width: parent.width; spacing: Style.spacing.sm
-                  Text { textFormat: Text.PlainText; objectName: "onlineCliTitle"; text: "ONLINE CLIS · " + root.onlineCliItems.length; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.4 }
+                  Text { textFormat: Text.PlainText; objectName: "onlineCliTitle"; text: "ONLINE CLIS · " + (root.onlineCliItems.length + root.onlineCliOffers.length); color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.4 }
                   Text { textFormat: Text.PlainText; width: parent.width - x; elide: Text.ElideRight; text: "your own account · NOVA keeps no keys"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                 }
                 Repeater { model: root.onlineCliItems; id: onlineCliRepeater; objectName: "onlineCliRepeater"
@@ -6434,6 +6484,102 @@ Ui.Panel {
                       text: root.cliStatus
                       color: root.cliStatusFailed ? Commons.Color.urgent : root.accent
                       font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 1
+                    }
+                  }
+                }
+                // Not set up yet (ONLINE-01 step 2): one line each, SET UP opens a folder choice.
+                Repeater { model: root.onlineCliOffers; objectName: "onlineCliOfferRepeater"
+                  Column {
+                    id: onlineOfferRow
+                    required property var modelData
+                    readonly property bool open: root.onlineSetupTool === modelData.id
+                    width: parent.width
+                    spacing: Style.spacing.xs
+                    Item {
+                      width: parent.width; height: Math.max(onlineOfferName.implicitHeight, onlineSetUpButton.height)
+                      Text { id: onlineOfferName; objectName: "onlineOfferName"; anchors.verticalCenter: parent.verticalCenter; textFormat: Text.PlainText; text: modelData.label; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; font.letterSpacing: 0.4 }
+                      Text { anchors.left: onlineOfferName.right; anchors.leftMargin: Style.spacing.md; anchors.right: onlineSetUpButton.left; anchors.rightMargin: Style.spacing.sm; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight; textFormat: Text.PlainText; text: "not set up"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                      CompactModelButton {
+                        id: onlineSetUpButton
+                        objectName: "onlineSetUpButton"
+                        anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                        text: onlineOfferRow.open ? "CLOSE" : "SET UP"
+                        tooltipText: "Add OPEN CLI for " + modelData.label + " (Omarchy installs it): one approval, it signs in with your own account"
+                        foreground: root.foreground; accent: root.accent; bordered: true; focusable: true
+                        Accessible.name: (onlineOfferRow.open ? "Close the setup for " : "Set up ") + modelData.label
+                        onClicked: root.openOnlineSetup(modelData)
+                      }
+                    }
+                    Item {
+                      objectName: "onlineSetupCard"
+                      visible: onlineOfferRow.open
+                      onVisibleChanged: if (visible) Qt.callLater(function() { root.revealInModelList(onlineSetupCard) })
+                      id: onlineSetupCard
+                      width: parent.width
+                      height: visible ? onlineSetupColumn.implicitHeight + 2 * Style.spacing.sm : 0
+                      Rectangle { anchors.fill: parent; color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.05); border.width: 1; border.color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.35) }
+                      Column {
+                        id: onlineSetupColumn
+                        x: Style.spacing.sm; y: Style.spacing.sm; width: parent.width - 2 * Style.spacing.sm
+                        spacing: Style.spacing.xs
+                        readonly property var tool: root.onlineSetupState ? root.onlineSetupToolState() : null
+                        readonly property real labelWidth: Style.space(78)
+                        Row {
+                          width: parent.width; spacing: Style.spacing.sm
+                          Text { textFormat: Text.PlainText; text: "SET UP " + modelData.label.toUpperCase(); color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 1; font.bold: true; font.letterSpacing: 1.2 }
+                          Text { textFormat: Text.PlainText; width: parent.width - x; elide: Text.ElideRight; text: "an online coding agent · your own account"; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 1 }
+                        }
+                        Text { textFormat: Text.PlainText; visible: !root.onlineSetupState && root.onlineSetupError === ""; text: "Checking this computer…"; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                        Item {
+                          visible: !!root.onlineSetupState; width: parent.width; height: Math.max(onlineFolderLabel.implicitHeight, onlineFolderChoices.height)
+                          Text { id: onlineFolderLabel; textFormat: Text.PlainText; y: Style.space(4); width: onlineSetupColumn.labelWidth; text: "FOLDER"; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2; font.letterSpacing: 1.2 }
+                          Flow {
+                            id: onlineFolderChoices
+                            x: onlineSetupColumn.labelWidth; width: parent.width - x; spacing: Style.spacing.xxs
+                            Repeater {
+                              model: root.onlineSetupState && Array.isArray(root.onlineSetupState.projects) ? root.onlineSetupState.projects : []
+                              CompactModelButton {
+                                required property var modelData
+                                objectName: "onlineProjectButton"
+                                text: modelData; selected: root.onlineSetupProject === modelData
+                                tooltipText: "It starts in " + modelData + " and asks before it touches anything outside it"
+                                foreground: root.foreground; accent: root.accent; bordered: true; focusable: true
+                                onClicked: root.onlineSetupProject = modelData
+                              }
+                            }
+                            Text { textFormat: Text.PlainText; visible: !!root.onlineSetupState && !(root.onlineSetupState.projects && root.onlineSetupState.projects.length); width: parent.width; wrapMode: Text.Wrap
+                                   text: "No folder in your home folder yet. Make one for your code (for example ~/Code), then open this again."; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                          }
+                        }
+                        Item {
+                          visible: !!root.onlineSetupState; width: parent.width; height: onlineSignInText.implicitHeight
+                          Text { textFormat: Text.PlainText; width: onlineSetupColumn.labelWidth; text: "SIGN-IN"; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2; font.letterSpacing: 1.2 }
+                          Text { id: onlineSignInText; objectName: "onlineSignInText"; textFormat: Text.PlainText; x: onlineSetupColumn.labelWidth; width: parent.width - x; wrapMode: Text.Wrap
+                                 text: "your own " + (modelData.id === "codex" ? "OpenAI" : "Anthropic") + " account, in the terminal · NOVA keeps no keys"
+                                 color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                        }
+                        Text { textFormat: Text.PlainText; objectName: "onlineSetupError"; visible: root.onlineSetupError !== ""; width: parent.width; wrapMode: Text.Wrap; text: root.onlineSetupError; color: root.destructiveColor; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                        Item {
+                          width: parent.width; height: onlineSetupActions.height
+                          Row {
+                            id: onlineSetupActions
+                            spacing: Style.spacing.xxs
+                            CompactModelButton {
+                              objectName: "onlineSetupConfirm"
+                              text: root.onlineSetupBusy ? "ASKING…" : "SET UP"
+                              tooltipText: "One approval lists every change before anything happens"
+                              selected: true; foreground: root.foreground; accent: root.accent; bordered: true; focusable: true
+                              enabled: !!(onlineSetupColumn.tool && onlineSetupColumn.tool.available === true) && root.onlineSetupProject !== "" && !root.onlineSetupBusy && !root.pendingApproval
+                              opacity: enabled ? 1 : 0.5
+                              onClicked: root.proposeOnlineSetup()
+                            }
+                            CompactModelButton { objectName: "onlineSetupCancel"; text: "CANCEL"; foreground: root.cardSoftText; accent: root.accent; bordered: false; focusable: true; onClicked: root.onlineSetupTool = "" }
+                          }
+                          Text { textFormat: Text.PlainText; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                                 visible: !!(onlineSetupColumn.tool && onlineSetupColumn.tool.downloads_on_first_start) && width < parent.width - onlineSetupActions.width
+                                 text: "its first start installs " + modelData.label; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 1 }
+                        }
+                      }
                     }
                   }
                 }
