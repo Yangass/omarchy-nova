@@ -59,16 +59,17 @@ QML_CHECK = r'''
         check(item("modelSwitchStatusText").visible, "switch status hidden")
         novaPanel.modelSwitchStatus = ""
       })
-      test("the downloads button stays clear of the list", function() {
-        var list = item("modelList"), button = item("browseModelDownloadsButton")
-        var listBottom = list.mapToItem(null, 0, list.height).y, buttonTop = button.mapToItem(null, 0, 0).y
-        check(listBottom + 2 <= buttonTop, "list bottom " + listBottom + " vs button top " + buttonTop)
+      test("MODELS v2: the downloads button sits next to REFRESH, at the top", function() {
+        var list = item("modelList"), button = item("browseModelDownloadsButton"), refresh = item("refreshInstalledModelsButton")
+        check(button.parent === refresh.parent && button.x > refresh.x, "not next to REFRESH")
+        var top = button.mapToItem(list, 0, 0).y
+        check(top >= 0 && top < 40, "not at the top of the list: " + top)
       })
       test("models the user hasn't seen are marked NEW until the catalog is closed", function() {
         novaPanel.catalogDownloadsExpanded = false
         novaPanel.seenCatalogIds = ["llama3.2-1b-q8-0"]; wait(50)
         check(JSON.stringify(novaPanel.newCatalogIds) === JSON.stringify(["gemma4-12b-q4-k-m"]), "new: " + JSON.stringify(novaPanel.newCatalogIds))
-        check(item("browseModelDownloadsButton").text === "BROWSE MODEL DOWNLOADS · 1 NEW", "button: " + item("browseModelDownloadsButton").text)
+        check(item("browseModelDownloadsButton").text === "BROWSE DOWNLOADS · 1 NEW", "button: " + item("browseModelDownloadsButton").text)
         novaPanel.toggleCatalogDownloads(); wait(150)
         var rows = item("catalogModelRepeater"), titles = []
         for (var i = 0; i < rows.count; i++) titles.push(findChild(rows.itemAt(i), "catalogRowTitle").text)
@@ -78,7 +79,7 @@ QML_CHECK = r'''
             var out = [], row = rows.itemAt(i); (function walk(o) { if (!o) return; if (o.objectName === "catalogTag" && o.visible) out.push(o.modelData); for (var k = 0; k < o.children.length; k++) walk(o.children[k]) })(row); return out } return [] }
         check(tags("Gemma 4 12B").indexOf("NEW") >= 0 && tags("Llama 3.2 1B").indexOf("NEW") < 0, "NEW tags: " + tags("Gemma 4 12B") + " / " + tags("Llama 3.2 1B"))
         novaPanel.toggleCatalogDownloads(); wait(50)
-        check(novaPanel.newCatalogIds.length === 0 && item("browseModelDownloadsButton").text === "BROWSE MODEL DOWNLOADS", "not marked seen: " + item("browseModelDownloadsButton").text)
+        check(novaPanel.newCatalogIds.length === 0 && item("browseModelDownloadsButton").text === "BROWSE DOWNLOADS", "not marked seen: " + item("browseModelDownloadsButton").text)
       })
       test("a first run marks nothing as new", function() {
         novaPanel.seenCatalogIds = []; wait(50)

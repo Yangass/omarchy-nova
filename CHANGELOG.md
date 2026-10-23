@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.16.0
+
+- **MODELS reads at a glance.** Each model is a card: the model on top, its coding CLI
+  below it, and each row has its own buttons. The facts are short words: **FITS**, **TIGHT**
+  or **TOO BIG**, the working context, and what the model is doing. The long explanations
+  are behind **DETAILS**. **BROWSE DOWNLOADS** sits next to REFRESH, and online CLIs take one
+  line each.
+- **Downloads: two lines per model, and filters.** Each model shows its name, size and
+  INSTALL, then FITS · context · what it's for. **SUGGESTED** (the default), **FITS** and
+  **ALL** replace the long suggestion banner and the "too big" toggle. The guide's quote and
+  how sure NOVA is are behind DETAILS. "Not listed?" (any Ollama model) is at the end.
+- **The biggest model that fits comes first** on a computer with a graphics card. On a
+  32 GB card, a 1B model came first because the guides NOVA quotes are about small cards.
+  Without a graphics card, the smallest still comes first, because it answers faster.
+- **SET UP and TUNE are simpler.** SET UP is three labelled choices: folder, when it asks,
+  and context, with the fit as one word. TUNE shows one number, one word, a memory bar and
+  one short reason, with marks only at the recommended context and at what the model was
+  trained for.
+- **Remove NOVA from the panel.** **MACHINE → REMOVE NOVA…**, or right-click NOVA's icon in
+  the bar. Choose Everything (NOVA, its settings and chats, every model and Ollama), NOVA
+  and its models, or NOVA only. Each choice shows the space it frees, and every model that
+  goes is listed first. A terminal shows each step and asks for your password only to
+  remove Ollama.
+
 ## 0.15.1
 
 - **Installing a model works again with Ollama 0.40 and newer.** Every model downloaded

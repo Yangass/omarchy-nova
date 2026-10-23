@@ -66,14 +66,16 @@ QML_CHECK = r'''
       var model = shell.fixture.catalog_models[0]
       test("installed list first and catalog collapsed without focusable hidden controls", function() {
         check(novaPanel.catalogDownloadsExpanded === false && !catalog.visible, "catalog starts expanded")
-        check(disclosure.visible && disclosure.focusable && disclosure.text === "BROWSE MODEL DOWNLOADS", "browse control missing")
+        check(disclosure.visible && disclosure.focusable && disclosure.text === "BROWSE DOWNLOADS", "browse control missing")
         check(!catalogChild("modelDetailsButton").visible, "hidden details still visible/focusable")
         var rows = child("installedModelsRepeater")
         check(rows.count === 1, "installed inventory lost")
         check(findChild(rows.itemAt(0), "loadInstalledModelButton") !== null, "load control lost")
         geometry.initialContent = list.contentHeight
         geometry.viewport = list.height
-        check(child("installedModelsSection").y < disclosure.y, "installed models not first")
+        var inHeader = false, up = disclosure.parent
+        while (up) { if (up === child("installedModelsSection")) inHeader = true; up = up.parent }
+        check(inHeader && disclosure.mapToItem(list, 0, 0).y < findChild(rows.itemAt(0), "loadInstalledModelButton").mapToItem(list, 0, 0).y, "browse is not in the INSTALLED header above the models")
       })
       test("compact selector budgets a usable list and contained footer", function() {
         var selector = child("modelSelector")
@@ -94,25 +96,19 @@ QML_CHECK = r'''
         inspect("normalChrome")
         previewHost.acceptancePreview = true; wait(100)
       })
-      test("compact actions share a row and wrap without overlap", function() {
+      test("MODELS v2: DETAILS sits on the facts line, LOAD AND USE on its own, nothing overlaps", function() {
         var first = child("installedModelsRepeater").itemAt(0)
         var actions = findChild(first, "installedModelActions")
         var load = findChild(first, "loadInstalledModelButton")
         var details = findChild(first, "installedModelDetailsButton")
-        check(actions && load && details, "installed action row missing")
+        var status = findChild(first, "installedModelStatusText")
+        check(actions && load && details && status, "installed card parts missing")
         check(load.height >= 18 && load.height <= 23 && details.height === load.height,
               "model buttons are not compact and readable")
-        check(Math.abs(load.y - details.y) <= 1 && load.x + load.width <= details.x + 1,
-              "model actions are not grouped without overlap")
-        var originalWidth = actions.width
-        actions.width = Math.max(load.width, details.width) + 1
-        wait(50)
-        check(details.y >= load.y + load.height && actions.height >= details.y + details.height,
-              "narrow action row did not wrap")
-        actions.width = Qt.binding(function() { return actions.parent.width - findChild(first, "installedModelIcons").width - Style.spacing.sm })
-        wait(50)
-        check(Math.abs(actions.width - originalWidth) <= 1 && Math.abs(load.y - details.y) <= 1,
-              "action row did not return to available width")
+        var l = load.mapToItem(first, 0, 0), d = details.mapToItem(first, 0, 0), t = status.mapToItem(first, 0, 0)
+        check(d.y + details.height <= l.y + 1, "LOAD AND USE is not below the facts line")
+        check(t.x + status.width <= d.x + 1, "facts run under DETAILS")
+        check(d.x + details.width <= first.width, "DETAILS outside the card")
       })
       test("mouse and programmatic disclosure only alter presentation", function() {
         var prior = novaPanel.onboardingState

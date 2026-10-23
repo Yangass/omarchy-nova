@@ -32,3 +32,7 @@ printf 'monitor=,1920x1080,auto,1\nexec-once = %s\nmisc { disable_hyprland_logo 
 timeout 900 Hyprland -c "$work/hypr.conf" >/dev/null 2>&1
 cat "$log"
 echo "(log: $log)"
+# Fail when any check failed or didn't report (2026-10-23: the suite said 0 with failures inside).
+ran=$(grep -c '^=== ' "$log"); passed=$(grep -c '^exit 0$' "$log")
+echo "checks: $passed of $# passed"
+[ "$ran" -eq "$#" ] && [ "$passed" -eq "$#" ]

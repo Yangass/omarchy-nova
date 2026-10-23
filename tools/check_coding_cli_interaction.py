@@ -85,7 +85,7 @@ QML_CHECK = r'''
         check(novaPanel.shownView === "models", "not on MODELS")
         check(child("codingCliSetupCard").visible, "setup card hidden")
         check(novaPanel.cliSetupProject === "~/Code", "first folder not chosen: " + novaPanel.cliSetupProject)
-        check(child("codingCliSetupVerdict").text.indexOf("Fits") === 0, "setup verdict missing")
+        check(child("codingCliSetupWord").text === "FITS" && child("codingCliSetupVerdict").text.indexOf("to spare") > 0, "setup verdict: " + child("codingCliSetupWord").text + " " + child("codingCliSetupVerdict").text)
         shot("2-setup")
       })
       test("SET UP asks for one approval that lists exactly what changes", function() {
@@ -105,20 +105,21 @@ QML_CHECK = r'''
         check(novaPanel.approvalFeedback.indexOf("Coding CLI set up") === 0, "feedback: " + novaPanel.approvalFeedback)
         waitUntil(function() { return novaPanel.openCodeProfile({id: "qwen3:8b"}) !== null }, "profile not picked up")
         check(child("tuneCodingCliButton").visible && !child("setUpCodingCliButton").visible, "buttons not switched")
-        check(child("codingCliLine").text.indexOf("CODING CLI · OpenCode · ~/Code · 32K") === 0, "line: " + child("codingCliLine").text)
+        check(child("codingCliLine").text.indexOf("OpenCode · ~/Code · 32K") === 0, "line: " + child("codingCliLine").text)
         shot("4-ready")
       })
       test("TUNE warns live and asks before a setting that doesn't fit", function() {
         press("tuneCodingCliButton")
         waitUntil(function() { return novaPanel.cliTuneState !== null }, "tune never loaded")
         check(child("codingCliTuneValue").text === "32K", "start value " + child("codingCliTuneValue").text)
-        check(child("codingCliTuneVerdict").text.indexOf("FITS") === 0, "start verdict " + child("codingCliTuneVerdict").text)
+        check(child("codingCliTuneWord").text === "FITS" && !child("codingCliTunePast").visible, "start verdict " + child("codingCliTuneWord").text)
         novaPanel.cliTuneIndex = 6  // 40K: the model's maximum, little room left here
-        check(child("codingCliTuneVerdict").text.indexOf("TIGHT") === 0, "40K verdict " + child("codingCliTuneVerdict").text)
+        check(child("codingCliTuneWord").text === "TIGHT" && child("codingCliTuneVerdict").text.indexOf("left for the desktop") > 0, "40K verdict " + child("codingCliTuneVerdict").text)
         novaPanel.cliTuneIndex = 8  // 64K
         var verdict = child("codingCliTuneVerdict").text
-        check(verdict.indexOf("DOESN'T FIT") === 0 && verdict.indexOf("PAST WHAT IT WAS TRAINED FOR (40K)") > 0, "64K verdict " + verdict)
-        check(child("codingCliSaveButton").text === "SAVE ANYWAY…", "save label " + child("codingCliSaveButton").text)
+        check(child("codingCliTuneWord").text === "DOESN'T FIT" && child("codingCliTunePast").visible && child("codingCliTunePast").text === "PAST TRAINED", "64K words")
+        check(verdict.indexOf("would spill into system memory") > 0 && verdict.indexOf("past 40K") > 0, "64K verdict " + verdict)
+        check(child("codingCliSaveButton").text === "SAVE 64K ANYWAY…", "save label " + child("codingCliSaveButton").text)
         shot("5-tune-64k")
         press("codingCliSaveButton")
         check(child("codingCliTuneConfirm").visible, "no are-you-sure")

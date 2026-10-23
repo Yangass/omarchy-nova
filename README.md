@@ -85,15 +85,25 @@ checks right away instead of waiting for the weekly check.
 
 ## Remove
 
-Open a terminal (**Super + Enter**) and paste:
+**MACHINE → REMOVE NOVA…** (or right-click NOVA's icon in the bar → **Remove NOVA…**). Choose
+what goes, with the space each choice frees:
+
+- **Everything**: NOVA, its settings and chats, every model, and Ollama itself;
+- **NOVA and its models**: Ollama stays for other tools;
+- **NOVA only**: Ollama and every model stay.
+
+Every model that goes is listed first, and one NOVA didn't install is marked. After "are you
+sure?", a terminal opens and shows each step. It asks for your password once, and only to
+remove Ollama.
+
+Without the panel, open a terminal (**Super + Enter**) and paste:
 
 ```bash
 bash ~/.config/omarchy/plugins/io.github.yangass.nova/tools/nova-uninstall.sh
 ```
 
-This removes NOVA's background helpers and the plugin. Ollama and the models you
-downloaded stay, so other tools can keep using them (`ollama list` shows them,
-`ollama rm <name>` deletes one).
+That removes NOVA only (it asks first); add `--models` or `--everything` for more, or
+`--dry-run` to see the steps without doing them.
 
 ## Privacy and security
 

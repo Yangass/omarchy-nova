@@ -75,8 +75,9 @@ QML_CHECK = r'''
         var load=child("loadInstalledModelButton"), details=child("installedModelDetailsButton")
         check(load.visible,"installed load control hidden")
         check(details.visible,"installed details control hidden")
-        check(Math.abs(load.y-details.y)<=1 && load.x+load.width<=details.x+1,
-              "installed load and details are not grouped without overlap")
+        var lp=load.mapToItem(novaPanel,0,0), dp=details.mapToItem(novaPanel,0,0)
+        check(dp.y+details.height<=lp.y+1 || lp.x+load.width<=dp.x+1,
+              "installed load and details overlap")
         check(child("globalAcquisitionStatusBadge").visible,"terminal status badge hidden")
         var prior=novaPanel.onboardingState
         var list=child("modelList"), top=details.mapToItem(list.contentItem,0,0).y

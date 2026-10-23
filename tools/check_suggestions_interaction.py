@@ -87,26 +87,38 @@ QML_CHECK = r'''
       novaPanel.refreshSuggestions()
       var n = 0; while (novaPanel.suggestionSummary === "" && n++ < 200) wait(10)
       wait(80)
-      test("summary lists only usable, selectable suggestions, smallest first", function() {
-        check(novaPanel.suggestionSummary === "SUGGESTED FOR THIS HARDWARE · low confidence · from published guides, smallest first: small-general, coder, big-general",
+      test("summary lists only usable, selectable suggestions, biggest first (smallest without a GPU)", function() {
+        check(novaPanel.suggestionSummary === "SUGGESTED FOR THIS HARDWARE · low confidence · from published guides, biggest first: big-general, coder, small-general",
               "summary wrong: " + novaPanel.suggestionSummary)
+        previewHost.gpuAvailable = false; wait(50)
+        check(novaPanel.suggestionSummary === "SUGGESTED FOR THIS HARDWARE · low confidence · from published guides, smallest first: small-general, coder, big-general",
+              "cpu summary wrong: " + novaPanel.suggestionSummary)
+        previewHost.gpuAvailable = true; wait(50)
       })
       test("each suggested row names its source, use and confidence", function() {
+        // MODELS v2: the guide's words sit behind DETAILS; the row itself says SUGGESTED.
         var big = line("big-general")
-        check(big.visible && big.text === "SUGGESTED for everyday use and coding · low confidence · guide.one: Balanced general model. · not tested by NOVA",
+        check(!big.visible, "suggestion text shown before DETAILS")
+        novaPanel.toggleModelDetails("big-general"); wait(50)
+        check(big.visible && big.text === "Suggested for everyday use and coding · guide.one: Balanced general model. · low confidence: from a published guide, not tested by NOVA",
               "big row wrong: " + big.text)
-        check(line("coder").text.indexOf("SUGGESTED for coding · low confidence · guide.one: Best local coding.") === 0, "coder row wrong: " + line("coder").text)
+        novaPanel.toggleModelDetails("big-general"); wait(50)
+        check(line("coder").text.indexOf("Suggested for coding · guide.one: Best local coding.") === 0, "coder row wrong: " + line("coder").text)
       })
-      test("catalog lists suggested models first, smallest first, then the rest in catalog order", function() {
+      test("catalog lists suggested models first, biggest first, then the rest", function() {
         var order = novaPanel.orderedCatalogModels.map(function(m) { return m.catalog_id }).join(",")
-        check(order === "small-general,coder,big-general,plain", "order: " + order)
+        check(order === "big-general,coder,small-general,plain", "order: " + order)
+        previewHost.gpuAvailable = false; wait(50)
+        order = novaPanel.orderedCatalogModels.map(function(m) { return m.catalog_id }).join(",")
+        check(order === "small-general,coder,big-general,plain", "cpu order: " + order)
+        previewHost.gpuAvailable = true; wait(50)
       })
       test("summary uses display names and drops a model installed since", function() {
         var models = JSON.parse(JSON.stringify(novaPanel.catalogModels))
         models[1].display_name = "Small General 1B"
         models[2].installed_match = {match_status: "exact", installed: true}
         novaPanel.catalogModels = models; wait(50)
-        check(novaPanel.suggestionSummary === "SUGGESTED FOR THIS HARDWARE · low confidence · from published guides, smallest first: Small General 1B, big-general",
+        check(novaPanel.suggestionSummary === "SUGGESTED FOR THIS HARDWARE · low confidence · from published guides, biggest first: big-general, Small General 1B",
               "summary: " + novaPanel.suggestionSummary)
         novaPanel.catalogModels = @CATALOG@; wait(50)
       })
@@ -141,22 +153,35 @@ QML_CHECK = r'''
         var blocked = JSON.parse(JSON.stringify(next)); blocked["plain"] = {status: "BLOCKED"}
         novaPanel.preflightByCatalog = blocked; wait(50)
         var order = novaPanel.orderedCatalogModels.map(function(m) { return m.catalog_id }).join(",")
-        check(order === "small-general,coder,big-general,other,plain", "blocked rows go last: " + order)
+        check(order === "big-general,coder,small-general,other,plain", "blocked rows go last: " + order)
         novaPanel.catalogModels = @CATALOG@; wait(50)
       })
-      test("models too big for this computer hide behind a toggle, with a plain muted reason", function() {
+      test("SUGGESTED, FITS and ALL: too-big models only under ALL, with a plain muted reason", function() {
         var pre = ({}); pre["plain"] = {status: "BLOCKED", blockers: ["FIT_POOR"]}; pre["coder"] = {status: "BLOCKED", blockers: ["INSUFFICIENT_STORAGE"]}
-        novaPanel.preflightByCatalog = pre; novaPanel.showTooBigModels = false; wait(50)
-        var toggle = findChild(novaPanel, "tooBigToggle")
-        check(novaPanel.tooBigModelCount === 1 && toggle.visible && toggle.text === "SHOW 1 MODEL TOO BIG FOR THIS COMPUTER", "toggle: " + toggle.text)
-        check(!rowFor("plain").visible, "too-big row shown before asking")
+        novaPanel.preflightByCatalog = pre; novaPanel.catalogFilter = "suggested"; wait(50)
+        var labels = novaPanel.catalogFilterChoices().map(function(c) { return c.label + " · " + c.count }).join(" | ")
+        check(labels === "SUGGESTED · 3 | FITS · 3 | ALL · 4", "filters: " + labels)
+        check(novaPanel.tooBigModelCount === 1 && !rowFor("plain").visible && rowFor("big-general").visible, "SUGGESTED shows the wrong rows")
+        check(findChild(rowFor("big-general"), "catalogTag") === null || findChild(rowFor("big-general"), "catalogTag").modelData !== "SUGGESTED", "SUGGESTED tag repeated under SUGGESTED")
+        novaPanel.catalogFilter = "fits"; wait(50)
+        check(!rowFor("plain").visible, "too-big row shown under FITS")
         check(rowFor("coder").visible && novaPanel.blockedReason(rowFor("coder").modelData) === "Needs more free disk space.", "disk reason")
-        toggle.clicked(); wait(50)
-        check(rowFor("plain").visible && toggle.text === "HIDE 1 MODEL TOO BIG FOR THIS COMPUTER", "toggle did not reveal")
+        check(findChild(rowFor("coder"), "acquisitionStatusBadge").visible, "blocked row says nothing")
+        novaPanel.catalogFilter = "all"; wait(50)
+        check(novaPanel.catalogFilter === "all" && rowFor("plain").visible, "ALL did not reveal")
         var badge = findChild(rowFor("plain"), "acquisitionStatusBadge")
         check(!badge.warning, "too-big row still red")
         check(novaPanel.blockedReason(rowFor("plain").modelData) === "Too big for this computer's memory.", "fit reason")
-        novaPanel.showTooBigModels = false; novaPanel.preflightByCatalog = ({}); wait(50)
+        var saved = novaPanel.modelSuggestions; novaPanel.modelSuggestions = ({}); novaPanel.catalogFilter = "suggested"; wait(50)
+        check(novaPanel.effectiveCatalogFilter === "fits" && novaPanel.catalogFilterChoices()[0].id === "fits", "no suggestions still filtered to SUGGESTED")
+        novaPanel.modelSuggestions = saved; novaPanel.catalogFilter = "suggested"; novaPanel.preflightByCatalog = ({}); wait(50)
+      })
+      test("an available row says nothing extra; its facts are words", function() {
+        var next = ({}); next["big-general"] = {status: "ELIGIBLE", fit_estimate: {rating: "GOOD", recommended_context: 32768, source: "catalog_metadata_estimate"}}
+        novaPanel.preflightByCatalog = next; wait(50)
+        check(findChild(rowFor("big-general"), "catalogFitWord").text === "FITS", "fit word: " + findChild(rowFor("big-general"), "catalogFitWord").text)
+        check(findChild(rowFor("big-general"), "catalogFacts").text.indexOf("32K") === 0, "facts: " + findChild(rowFor("big-general"), "catalogFacts").text)
+        novaPanel.preflightByCatalog = ({}); wait(50)
       })
       test("run 6: too-big models come after a tight fit, smallest first", function() {
         var GiB = 1024 * 1024 * 1024

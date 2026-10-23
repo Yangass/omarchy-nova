@@ -122,7 +122,7 @@ QML_CHECK = r'''
       detailsBtn.clicked()
       wait(50)
       check(novaPanel.installedModelDetailsOpen(novaPanel.discoveredModels[0]), "details did not open")
-      check(detailsBtn.text === "HIDE DETAILS", "details button did not change label")
+      check(detailsBtn.text === "LESS", "details button did not change label: " + detailsBtn.text)
       // Toggle closed
       detailsBtn.clicked()
       wait(50)

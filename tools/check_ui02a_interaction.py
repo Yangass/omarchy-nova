@@ -166,7 +166,8 @@ QML_CHECK = r'''
         var details = findChild(row, "installedModelDetailsButton")
         var originalHeight = details.height, originalWidth = details.width
         check(details.focusable && details.enabled && details.opacity === 1, "enabled Details is not clear/focusable")
-        check(details.background.a > 0, "enabled Details has no subtle fill")
+        // MODELS v2: DETAILS is a quiet text button on the facts line (no fill, no border).
+        check(!details.bordered && details.text === "DETAILS", "Details is not the quiet text button")
         details.forceActiveFocus(); wait(30)
         check(details.activeFocus && details._showFocusRing, "enabled Details has no visible focus state")
         details.enabled = false; wait(40)

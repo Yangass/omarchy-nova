@@ -290,8 +290,44 @@ Ui.BarWidget {
     activeColor: root.online ? Commons.Color.accent : Commons.Color.urgent
     tooltipText: root.online ? "NOVA online · CPU " + root.percent(root.cpu) + " · RAM " + root.percent(root.memory) : "NOVA offline · click for details"
     onPressed: function(mouseButton) {
-      if (mouseButton === Qt.RightButton) root.refresh()
-      else if (mouseButton === Qt.LeftButton) root.togglePanel()
+      if (mouseButton === Qt.RightButton) root.menuOpen = !root.menuOpen
+      else if (mouseButton === Qt.LeftButton) { root.menuOpen = false; root.togglePanel() }
+    }
+  }
+  // Right-click (REMOVE-01, Konstantin 2026-10-23): Open NOVA, Refresh, Remove NOVA….
+  // Remove opens the panel's card that shows what goes and asks first.
+  property bool menuOpen: false
+  readonly property color destructiveColor: {
+    var c = Commons.Color.urgent, h = c.hslHue, sat = c.hslSaturation
+    return h >= 0 && (h <= 20 / 360 || h >= 340 / 360) && sat > 0.3 ? c : "#e5534b"
+  }
+  QtObject { id: menuOwner; function close() { root.menuOpen = false } }
+  Ui.PopupCard {
+    id: barMenu
+    anchorItem: button
+    bar: root.bar
+    owner: menuOwner
+    open: root.menuOpen
+    contentWidth: barMenu.fittedContentWidth(Style.space(200))
+    contentHeight: barMenu.fittedContentHeight(barMenuColumn.implicitHeight)
+    Column {
+      id: barMenuColumn
+      objectName: "novaBarMenu"
+      anchors.fill: parent
+      spacing: Style.space(2)
+      Ui.Button { objectName: "novaMenuOpen"; width: parent.width; leftAlign: true; text: "Open NOVA"; focusable: true; onClicked: { root.menuOpen = false; root.open() } }
+      Ui.Button { objectName: "novaMenuRefresh"; width: parent.width; leftAlign: true; text: "Refresh"; focusable: true; onClicked: { root.menuOpen = false; root.refresh() } }
+      Rectangle { width: parent.width; height: 1; color: Qt.rgba(Commons.Color.foreground.r, Commons.Color.foreground.g, Commons.Color.foreground.b, 0.15) }
+      Ui.Button {
+        objectName: "novaMenuRemove"
+        width: parent.width; leftAlign: true; text: "Remove NOVA…"; focusable: true
+        foreground: root.destructiveColor
+        tooltipText: "Shows what goes and asks first"
+        onClicked: {
+          root.menuOpen = false
+          if (panelLoader.item && typeof panelLoader.item.openRemoveNova === "function") panelLoader.item.openRemoveNova()
+        }
+      }
     }
   }
 }

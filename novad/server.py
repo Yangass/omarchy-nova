@@ -978,7 +978,7 @@ def run_agent_loop(user_message: str, on_token: Callable[[str], None] | None = N
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "novad/0.15.1"
+    server_version = "novad/0.16.0"
     def log_message(self, _format: str, *_args: Any) -> None: return
     def send_json(self, status: HTTPStatus, payload: dict[str, Any]) -> bool:
         # Ends with a newline: the panel reads the socket line by line (BarWidget.novaRequest).
@@ -1121,11 +1121,18 @@ class Handler(BaseHTTPRequestHandler):
                 # What a delete would really free, and which models share the files (2026-10-12).
                 try: shares = model_sharing()
                 except (OSError, ValueError): shares = {}
+                # Every model's files, each counted once: what removing all models frees (REMOVE-01).
+                try:
+                    layers = {}
+                    for record in local_inventory(with_layers=True).get('records', []):
+                        layers.update(record.get('layers') or {})
+                    storage = sum(layers.values())
+                except (OSError, ValueError): storage = None
                 for entry in models:
                     info = shares.get(entry.get("id"))
                     entry["delete_frees_bytes"] = info["frees_bytes"] if info else None
                     entry["shares_files_with"] = info["shared_with"] if info else []
-                payload={"active_provider":ACTIVE_PROVIDER,"active_model":ACTIVE_MODEL,"selection_state":"selected" if has_active_selection() else "none","active_runtime_ready":active.get("runtime_ready",False),"models":models}
+                payload={"active_provider":ACTIVE_PROVIDER,"active_model":ACTIVE_MODEL,"selection_state":"selected" if has_active_selection() else "none","active_runtime_ready":active.get("runtime_ready",False),"models":models,"storage_bytes":storage}
                 if active.get("transition"): payload["transition"]=active["transition"]
                 self.send_json(HTTPStatus.OK,payload)
             except ProviderUnavailable: self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"error":"provider_unavailable", "active_provider":ACTIVE_PROVIDER, "active_model":ACTIVE_MODEL})

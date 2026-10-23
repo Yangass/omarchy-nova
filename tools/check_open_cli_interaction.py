@@ -164,19 +164,15 @@ QML_CHECK = r'''
       novaPanel.modelsUnavailable = false
       novaPanel.discoveredModels = @MODELS@
       wait(100)
-      test("every installed row offers Open CLI; only the profiled alias is launchable", function() {
+      test("MODELS v2: only a row with a CLI offers OPEN CLI; the others offer SET UP", function() {
         profiles("available")
         check(child(0, "openCliButton").visible && child(0, "openCliButton").launchable, "alias not launchable")
+        check(findChild(child(0, "codingCliRows"), "codingCliLine").text.indexOf("Qwen Code") === 0, "CLI row: " + findChild(child(0, "codingCliRows"), "codingCliLine").text)
         for (var i = 1; i < 3; i++) {
-          var button = child(i, "openCliButton")
-          check(button.visible && !button.launchable && button.text === "OPEN CLI", "row " + i + " wrongly launchable")
+          var rows = child(i, "codingCliRows")
+          check(!findChild(rows, "openCliButton").visible, "row " + i + " offers OPEN CLI without a CLI")
+          check(findChild(rows, "setUpCodingCliButton").visible === (@MODELS@[i].available === true), "row " + i + " SET UP")
         }
-      })
-      test("unprofiled row explains why and never opens a card or launches", function() {
-        click(child(2, "openCliButton"))
-        var status = child(2, "cliStatusText")
-        check(status.visible && status.text.indexOf("No coding CLI profile for this model. Configured for: nova-code-qwen38-96k:latest") === 0, "reason missing: " + status.text)
-        check(!child(2, "cliConfirmCard").visible && get("/__requests__").launch.length === 0, "unprofiled row launched")
       })
       test("confirm card names profile, model and project; cancel sends nothing", function() {
         click(child(0, "openCliButton"))
@@ -314,7 +310,9 @@ QML_CHECK = r'''
         capture("online-confirm")
         keyClick(Qt.Key_Escape); wait(50)
         check(!card.visible && get("/__requests__").launch.length === 0, "Escape launched")
-        click(findChild(row, "onlineCliOpenButton")); wait(350); keyClick(Qt.Key_Return); wait(300)
+        wait(500)  // the list springs back into bounds once the card closes; a press then only stops it
+        click(findChild(row, "onlineCliOpenButton")); wait(350)
+        keyClick(Qt.Key_Return); wait(300)
         var requests = get("/__requests__")
         check(requests.launch.length === 1 && JSON.stringify(requests.launch[0]) === JSON.stringify({profile_id:"claude-code", model:"online"}), "wrong request: " + JSON.stringify(requests.launch))
         check(findChild(row, "onlineCliStatusText").text === "CLI LAUNCH REQUESTED // NOVA CANNOT CONFIRM THE TERMINAL APPEARED", "status: " + findChild(row, "onlineCliStatusText").text)

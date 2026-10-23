@@ -136,7 +136,7 @@ Ui.Panel {
   property var pendingApproval: null
   // Installation and controlled-action approvals share one foreground surface.
   // The user's dashboard/chat preferences remain unchanged underneath it.
-  readonly property bool approvalForeground: pendingApproval !== null
+  readonly property bool approvalForeground: pendingApproval !== null || removeNovaOpen
   // UX Phase 2 (Konstantin, 2026-10-09, previews/ux-phase2): three views in the panel.
   // NOVA reopens on the last one; an approval always shows in CHAT, where its result lands.
   property string panelView: "chat"
@@ -989,6 +989,60 @@ Ui.Panel {
   property string providerMinimumVersion: ""
   property string setupLaunched: ""
   property var terminalLauncher: null
+  // REMOVE-01 (Konstantin 2026-10-23: "remove it all: NOVA, models and local LLMs"): a card
+  // with three choices and real sizes, are-you-sure, then the same floating terminal as
+  // INSTALL OLLAMA runs tools/nova-uninstall.sh with the choice (sudo only for Ollama).
+  property bool removeNovaOpen: false
+  property string removeNovaChoice: "everything"
+  property bool removeNovaSure: false
+  property bool removeScriptPresent: false
+  property real modelStorageBytes: -1  // every model's files, each counted once (novad)
+  readonly property var removeNovaChoices: [
+    { id: "everything", title: "Everything", text: "NOVA, its settings and chats, every model, and Ollama itself." },
+    { id: "models", title: "NOVA and its models", text: "NOVA, its settings and chats, and every model. Ollama stays for other tools." },
+    { id: "nova", title: "NOVA only", text: "NOVA, its settings and chats. Ollama and every model stay." }]
+  function openRemoveNova() {
+    removeNovaChoice = "everything"; removeNovaSure = false; removeNovaOpen = true
+    if (!opened && typeof open === "function") open()
+  }
+  function closeRemoveNova() { removeNovaOpen = false; removeNovaSure = false }
+  // A model NOVA installed (its catalog download) or built (a coding CLI build); anything
+  // else another tool or the user pulled, and it goes too.
+  function modelFromNova(item) {
+    var match = matchedCatalogEntryFor(item), record = match ? acquisitionByCatalog[match.catalog_id] : null
+    return !!(item && (item.tailored_for || (record && record.state === "INSTALLED")))
+  }
+  function removeNovaFrees(choice) {
+    if (choice === "nova") return "< 0.1 GiB"
+    var bytes = modelStorageBytes >= 0 ? modelStorageBytes
+      : discoveredModels.reduce(function(sum, item) { return sum + (item && item.metadata && item.metadata.size_bytes > 0 ? item.metadata.size_bytes : 0) }, 0)
+    return bytesLabel(bytes)
+  }
+  function removeNovaBlocker() {
+    if (cliState && Array.isArray(cliState.profiles) && cliState.profiles.some(function(p) { return p && p.running === true }))
+      return "A coding CLI is running: close it first."
+    if (trackedAcquisitionId !== "") return "A model is downloading: let it finish first."
+    if (chatBusy) return "NOVA is answering: wait a moment."
+    if (!removeScriptPresent) return "This copy of NOVA has no remove script; see NOVA's README, \"Remove\"."
+    return ""
+  }
+  function launchRemoveNova() {
+    if (removeNovaBlocker() !== "" || ["everything", "models", "nova"].indexOf(removeNovaChoice) < 0) return
+    var command = "omarchy-launch-floating-terminal-with-presentation " + shellQuote(shellQuote(pluginDir + "/tools/nova-uninstall.sh") + " --" + removeNovaChoice)
+    if (typeof terminalLauncher === "function") terminalLauncher(command)  // test hook only
+    else if (bar && typeof bar.run === "function") bar.run(command)
+    else return
+    closeRemoveNova()
+    // Step aside so the terminal (and its password prompt) is not covered by the panel.
+    if (!acceptancePreview && typeof terminalLauncher !== "function") close()
+  }
+  FileView {
+    id: removeScript
+    path: root.pluginDir + "/tools/nova-uninstall.sh"
+    printErrors: false
+    onLoaded: root.removeScriptPresent = true
+    onLoadFailed: root.removeScriptPresent = false
+  }
   FileView {
     id: novaSetupScript
     path: root.pluginDir + "/tools/nova-setup.sh"
@@ -1279,6 +1333,7 @@ Ui.Panel {
     try { payload = status === 200 ? JSON.parse(body) : null } catch (error) { payload = null }
     if (payload && typeof payload === "object" && Array.isArray(payload.models)) {
       discoveredModels = payload.models.filter(function(item) { return !(item && item.tailored_for) })
+      modelStorageBytes = typeof payload.storage_bytes === "number" && payload.storage_bytes >= 0 ? payload.storage_bytes : -1
       modelsUnavailable = false
       // Run 6: "Freed … loads again when it's next used" stayed under "IN MEMORY" after
       // the model loaded again. An unload note lasts until the model is back in memory.
@@ -2049,19 +2104,20 @@ Ui.Panel {
   // REC-01: attributed, low-confidence suggestions for not-yet-installed models.
   // catalog_id -> {uses: [..], attributions: [{publisher, summary}], storage}
   property var modelSuggestions: ({})
-  // Friendly names, smallest first; a model installed since the suggestions loaded drops out.
+  // Friendly names in list order; a model installed since the suggestions loaded drops out.
   readonly property string suggestionSummary: {
-    var merged = modelSuggestions
+    var merged = modelSuggestions, bigFirst = gpuAvailable ? -1 : 1
     var ids = Object.keys(merged).filter(function(id) { var item = modelForCatalog(id); return !(item && catalogIsInstalled(item)) })
-      .sort(function(a, b) { return merged[a].storage - merged[b].storage })
+      .sort(function(a, b) { return bigFirst * (merged[a].storage - merged[b].storage) })
     return ids.length
-      ? "SUGGESTED FOR THIS HARDWARE · low confidence · from published guides, smallest first: " + ids.map(catalogDisplayName).join(", ")
+      ? "SUGGESTED FOR THIS HARDWARE · low confidence · from published guides, " + (gpuAvailable ? "biggest" : "smallest") + " first: " + ids.map(catalogDisplayName).join(", ")
       : ""
   }
-  // Download catalog order: suggested (smallest first), then the rest (catalog order),
-  // then models the preflight blocked for another reason (a tight fit), then models too
-  // big for this computer, smallest first. Run 6 (2026-10-10): too-big ones were mixed
-  // into the blocked group in catalog order, so Qwen 3.5 35B came before Llama 3.2 3B.
+  // Download catalog order: suggested, then the rest, both biggest first with a graphics card
+  // (Konstantin 2026-10-23: a 1B model first on a 32 GB card made no sense) and smallest first
+  // without one (smaller answers faster on a CPU); then models the preflight blocked for
+  // another reason (a tight fit), catalog order; then models too big for this computer,
+  // smallest first. Run 6 (2026-10-10): too-big ones were mixed into the blocked group.
   readonly property var orderedCatalogModels: {
     var suggestions = modelSuggestions, preflight = preflightByCatalog
     function rank(item) {
@@ -2073,7 +2129,12 @@ Ui.Panel {
     return catalogModels.map(function(item, index) { return { item: item, index: index, rank: rank(item) } })
       .sort(function(a, b) {
         if (a.rank !== b.rank) return a.rank - b.rank
-        if (a.rank === 0) { var d = suggestions[a.item.catalog_id].storage - suggestions[b.item.catalog_id].storage; if (d) return d }
+        var bigFirst = gpuAvailable ? -1 : 1
+        if (a.rank === 0) { var d = suggestions[a.item.catalog_id].storage - suggestions[b.item.catalog_id].storage; if (d) return bigFirst * d }
+        if (a.rank === 1) {
+          var ra = catalogSizeBytes(a.item), rb = catalogSizeBytes(b.item)
+          if (gpuAvailable && ra !== null && rb !== null && ra !== rb) return rb - ra
+        }
         if (a.rank === 3) {
           var sa = catalogSizeBytes(a.item), sb = catalogSizeBytes(b.item)
           var e = (sa === null ? Number.MAX_VALUE : sa) - (sb === null ? Number.MAX_VALUE : sb); if (e) return e
@@ -2086,7 +2147,7 @@ Ui.Panel {
     var s = suggestionFor(catalogId)
     if (!s) return ""
     var sources = s.attributions.map(function(a) { return a.publisher + ": " + a.summary }).join(" · ")
-    return "SUGGESTED for " + s.uses.join(" and ") + " · low confidence · " + sources + " · not tested by NOVA"
+    return "Suggested for " + s.uses.join(" and ") + " · " + sources + " · low confidence: from a published guide, not tested by NOVA"
   }
   function applySuggestions(profileLabel, payload, merged) {
     if (!payload || !Array.isArray(payload.candidates)) return
@@ -2185,6 +2246,42 @@ Ui.Panel {
   }
   function bytesLabel(value) { return typeof value === "number" && isFinite(value) ? (value / 1073741824).toFixed(1) + " GiB" : "UNKNOWN" }
   function fitFor(id) { return modelFits[id] || null }
+  function browseDownloadsLabel() {
+    if (catalogDownloadsExpanded) return "HIDE DOWNLOADS"
+    var attention = catalogAttention()
+    return attention ? attention.label : "BROWSE DOWNLOADS" + (newCatalogIds.length ? " · " + newCatalogIds.length + " NEW" : "")
+  }
+  // MODELS v2 (Konstantin 2026-10-23: "hard to understand without reading"): a fit as one
+  // word; the sentence stays in DETAILS. Colour only helps (some themes map red to green).
+  readonly property color fitsColor: "#9fc17f"
+  function fitWord(fit) {
+    if (!fit || !fit.rating) return ""
+    return ({EXCELLENT: "FITS", GOOD: "FITS", TIGHT: "TIGHT", POOR: "TOO BIG", UNSUPPORTED: "CAN'T CHAT"})[fit.rating] || ""
+  }
+  function fitTone(fit) { var word = fitWord(fit); return word === "FITS" ? fitsColor : (word === "TIGHT" ? cliTightColor : destructiveColor) }
+  // The context NOVA runs it with (a coding CLI build's, which chat follows; else its own
+  // num_ctx; else the fit's), then what it is doing.
+  // NOVA's fit estimates are for local Ollama models: a same-named model from another
+  // provider gets none.
+  function installedFit(item) { return item && item.provider === "ollama" ? fitFor(item.id) : null }
+  function installedFacts(item) {
+    if (!item) return ""
+    var profile = openCodeProfile(item), fit = installedFit(item), own = item.metadata && item.metadata.own_context
+    var context = profile && profile.context > 0 ? profile.context : (own > 0 ? own : (fit && fit.recommended_context > 0 ? fit.recommended_context : 0))
+    var state = modelTransitionActive && transitionTarget === item.id ? "switching to it…"
+      : item.available !== true ? "unavailable"
+      : item.resident === true ? "in " + memoryWord + " · unloads 10 min after last use"
+      : installedModelSelected(item) ? "loads with your first message" : "installed"
+    return (context > 0 ? contextLabel(context) + " · " : "") + state
+  }
+  function codingCliSummary(item, profiles) {
+    var openCode = openCodeProfile(item)
+    if (openCode) return "OpenCode · " + (openCode.project_place || openCode.project_label) + " · " + contextLabel(openCode.context)
+      + " · " + (openCode.care === "edits" ? "asks before commands" : "asks before edits and commands")
+    if (!profiles || !profiles.length) return cliState === null ? "NOVA couldn't check" : ""
+    var first = profiles[0]
+    return first.label + (profiles.length > 1 ? " · " + profiles.length + " projects" : " · " + first.project_label)
+  }
   function fitSummary(id) {
     var fit = fitFor(id)
     if (!fit || !fit.rating || fit.rating === "UNKNOWN") return "Hardware fit hasn’t been verified yet."
@@ -2315,10 +2412,50 @@ Ui.Panel {
     var e = matchedCatalogEntryFor(installedModel)
     return e ? acquisitionHistory(e) : ""
   }
-  property bool showTooBigModels: false
+  // MODELS v2: SUGGESTED (default) · FITS · ALL. A download in progress and a model the user
+  // added are always listed; with no suggestions SUGGESTED gives way to FITS.
+  property string catalogFilter: "suggested"
+  readonly property int suggestedCatalogCount: catalogModels.filter(function(item) { return !catalogIsInstalled(item) && !!modelSuggestions[item.catalog_id] }).length
+  readonly property string effectiveCatalogFilter: catalogFilter === "suggested" && suggestedCatalogCount === 0 ? "fits" : catalogFilter
   readonly property int tooBigModelCount: catalogModels.filter(function(item) { return !catalogIsInstalled(item) && catalogTooBig(item) }).length
-  function catalogRowVisible(modelData) {
-    if (!catalogIsInstalled(modelData)) return showTooBigModels || !catalogTooBig(modelData)
+  function catalogFilterChoices() {
+    function count(filter) { return catalogModels.filter(function(item) { return catalogRowVisibleFor(item, filter) }).length }
+    var choices = []
+    if (suggestedCatalogCount > 0) choices.push({ id: "suggested", label: "SUGGESTED", count: count("suggested"), tip: "Models published guides suggest for computers like this one" })
+    choices.push({ id: "fits", label: "FITS", count: count("fits"), tip: "Every model that fits this computer" })
+    choices.push({ id: "all", label: "ALL", count: count("all"), tip: "Every model in NOVA's list, also those too big for this computer" })
+    return choices
+  }
+  function catalogFilterHint() {
+    if (effectiveCatalogFilter === "suggested") return "Suggested from published guides for computers like this one; NOVA hasn't tested them here yet. Biggest first" + (gpuAvailable ? ": more capable, slower to answer." : ".")
+    if (effectiveCatalogFilter === "fits") return gpuAvailable ? "Every model here fits your graphics card. Biggest first: more capable, slower to answer." : "Every model here fits this computer's memory. Smallest first: without a graphics card, smaller answers faster."
+    return "Every model in NOVA's list; the ones too big for this computer say TOO BIG."
+  }
+  function catalogRowBusy(modelData) {
+    var record = acquisitionByCatalog[modelData.catalog_id] || null
+    return !!record && (["APPROVED", "STARTING", "DOWNLOADING", "VERIFYING", "CANCEL_REQUESTED"].indexOf(record.state) >= 0
+      || (record.state === "RECOVERY_REQUIRED" && !record.recovery_resolution))
+  }
+  function catalogUses(modelData) {
+    var tags = modelData.task_tags || [], caps = modelData.capabilities || {}, words = []
+    if (tags.indexOf("coding") >= 0 || caps.coding === true) words.push("coding")
+    if (tags.indexOf("general") >= 0) words.push("chat")
+    if (tags.indexOf("reasoning") >= 0) words.push("reasoning")
+    if (tags.indexOf("vision") >= 0 || caps.vision === true) words.push("images")
+    if (!words.length && caps.chat === true) words.push("chat")
+    return words.length === 1 && words[0] === "chat" ? "everyday chat" : words.join(" · ")
+  }
+  function catalogFacts(modelData) {
+    var fit = rowFit(modelData)
+    return [fit && fit.recommended_context > 0 ? contextLabel(fit.recommended_context) : "", catalogUses(modelData)].filter(function(x) { return x !== "" }).join(" · ")
+  }
+  function catalogRowVisible(modelData) { return catalogRowVisibleFor(modelData, effectiveCatalogFilter) }
+  function catalogRowVisibleFor(modelData, filter) {
+    if (!catalogIsInstalled(modelData)) {
+      if (catalogRowBusy(modelData) || modelData.user_requested === true) return true
+      if (filter === "suggested") return !!modelSuggestions[modelData.catalog_id]
+      return filter === "all" || !catalogTooBig(modelData)
+    }
     var record = acquisitionByCatalog[modelData.catalog_id] || null
     if (record) {
       if (["APPROVED", "STARTING", "DOWNLOADING", "VERIFYING", "CANCEL_REQUESTED"].indexOf(record.state) >= 0) return true
@@ -2526,7 +2663,11 @@ Ui.Panel {
       : (level === "tight" ? "TIGHT · only " + gibLabel(spare) + " of graphics memory left for the desktop and other apps; video, games or another model may stutter."
       : "FITS · " + gibLabel(need) + " of " + gibLabel(numbers.budget_bytes) + ", " + gibLabel(spare) + " to spare.")
     if (past) text += "\nPAST WHAT IT WAS TRAINED FOR (" + contextLabel(numbers.native_context) + ") · it starts to lose track of long conversations and code."
-    return { level: level, past: past, need: need, spare: spare, text: text }
+    var word = level === "spills" ? "DOESN'T FIT" : (level === "tight" ? "TIGHT" : "FITS")
+    var short = level === "spills" ? gibLabel(-spare) + " would spill into system memory: several times slower"
+      : (level === "tight" ? "only " + gibLabel(spare) + " left for the desktop and other apps" : gibLabel(spare) + " to spare")
+    if (past) short += "; past " + contextLabel(numbers.native_context) + " it starts to lose track of long code"
+    return { level: level, past: past, need: need, spare: spare, text: text, word: word, short: short }
   }
   function verdictColor(level, past) { return level === "spills" ? destructiveColor : (level === "tight" || level === "unknown" ? cliTightColor : (past ? cliPastColor : accent)) }
   function novaJson(method, path, value, timeout, done) {
@@ -3677,6 +3818,16 @@ Ui.Panel {
   Timer { interval: 30000; running: root.opened && !root.acceptancePreview; repeat: true; onTriggered: root.refreshOnboarding() }
   ListModel { id: chatHistoryModel }
 
+  // MODELS v2: a fact as one word in a thin frame (FITS, TIGHT, TOO BIG, SUGGESTED…).
+  component FactWord: Rectangle {
+    property string text: ""
+    property color tone: root.accent
+    visible: text !== ""
+    width: visible ? factWordText.implicitWidth + Style.space(8) : 0
+    height: factWordText.implicitHeight + Style.space(2)
+    color: "transparent"; border.width: 1; border.color: Qt.rgba(tone.r, tone.g, tone.b, 0.6)
+    Text { id: factWordText; textFormat: Text.PlainText; anchors.centerIn: parent; text: parent.text; color: parent.tone; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2; font.bold: true; font.letterSpacing: 1 }
+  }
   component CompactModelButton: Ui.Button {
     fontSize: Style.font.bodySmall
     horizontalPadding: Math.max(4, Style.spacing.controlPaddingX * 0.7)
@@ -5048,6 +5199,98 @@ Ui.Panel {
           anchors.right: parent.right
           visible: root.approvalForeground
             Item {
+              id: removeNovaCard
+              objectName: "removeNovaCard"
+              width: parent.width
+              visible: root.removeNovaOpen && root.pendingApproval === null
+              height: Math.min(parent.height, removeNovaColumn.implicitHeight + 2 * Style.spacing.sm)
+              readonly property color red: root.destructiveColor
+              readonly property string blocker: root.removeNovaBlocker()
+              Keys.onEscapePressed: function(event) { root.removeNovaSure ? root.removeNovaSure = false : root.closeRemoveNova(); event.accepted = true }
+              onVisibleChanged: if (visible) forceActiveFocus()
+              Rectangle { anchors.fill: parent; color: Qt.rgba(removeNovaCard.red.r, removeNovaCard.red.g, removeNovaCard.red.b, 0.05); border.width: 1; border.color: removeNovaCard.red }
+              Flickable {
+                anchors.fill: parent; anchors.margins: Style.spacing.sm
+                clip: true; contentWidth: width; contentHeight: removeNovaColumn.implicitHeight; boundsBehavior: Flickable.StopAtBounds; interactive: contentHeight > height
+                Column {
+                  id: removeNovaColumn
+                  width: parent.width
+                  spacing: Style.spacing.xs
+                  Text { textFormat: Text.PlainText; objectName: "removeNovaTitle"; text: "REMOVE NOVA FROM THIS COMPUTER"; color: removeNovaCard.red; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.4 }
+                  Text { textFormat: Text.PlainText; visible: !root.removeNovaSure; width: parent.width; wrapMode: Text.Wrap; text: "Choose what goes. Nothing is removed until you confirm."; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                  Repeater {
+                    model: root.removeNovaSure ? root.removeNovaChoices.filter(function(c) { return c.id === root.removeNovaChoice }) : root.removeNovaChoices
+                    Rectangle {
+                      required property var modelData
+                      objectName: "removeNovaChoice"
+                      readonly property string choiceId: modelData.id
+                      readonly property bool chosen: root.removeNovaChoice === modelData.id
+                      width: removeNovaColumn.width; height: choiceText.implicitHeight + 2 * Style.spacing.xs
+                      color: chosen ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.05) : "transparent"
+                      border.width: 1; border.color: chosen ? root.foreground : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
+                      Rectangle {
+                        x: Style.spacing.xs; y: Style.spacing.xs + 3; width: 11; height: 11; radius: 6
+                        color: "transparent"; border.width: 1; border.color: parent.chosen ? root.foreground : root.muted
+                        Rectangle { visible: parent.parent.chosen; anchors.centerIn: parent; width: 5; height: 5; radius: 3; color: root.foreground }
+                      }
+                      Column {
+                        id: choiceText
+                        x: Style.spacing.xs + 20; y: Style.spacing.xs; width: parent.width - x - choiceFrees.implicitWidth - Style.spacing.sm
+                        Text { textFormat: Text.PlainText; text: modelData.title; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; font.bold: true }
+                        Text { textFormat: Text.PlainText; visible: !root.removeNovaSure; width: parent.width; wrapMode: Text.Wrap; text: modelData.text; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                      }
+                      Text { id: choiceFrees; textFormat: Text.PlainText; anchors.right: parent.right; anchors.rightMargin: Style.spacing.xs; y: Style.spacing.xs + 2; text: "frees " + root.removeNovaFrees(modelData.id); color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                      MouseArea { anchors.fill: parent; enabled: !root.removeNovaSure; cursorShape: Qt.PointingHandCursor
+                                  Accessible.role: Accessible.RadioButton; Accessible.name: modelData.title + ": " + modelData.text
+                                  onClicked: root.removeNovaChoice = modelData.id }
+                    }
+                  }
+                  Column {
+                    objectName: "removeNovaModels"
+                    visible: !root.removeNovaSure && root.removeNovaChoice !== "nova" && root.discoveredModels.length > 0
+                    width: parent.width; spacing: 1; leftPadding: Style.spacing.sm
+                    Text { textFormat: Text.PlainText; text: "Models that go"; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true }
+                    Repeater {
+                      model: root.discoveredModels
+                      Row {
+                        required property var modelData
+                        spacing: Style.spacing.xs
+                        Text { textFormat: Text.PlainText; text: root.modelPlainName(modelData.id); color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                        Text { textFormat: Text.PlainText; text: modelData.metadata && modelData.metadata.size_bytes > 0 ? "· " + root.bytesLabel(modelData.metadata.size_bytes) : ""; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                        FactWord { objectName: "removeNovaNotFromNova"; anchors.verticalCenter: parent.verticalCenter; text: root.modelFromNova(modelData) ? "" : "NOT FROM NOVA"; tone: root.cliTightColor }
+                      }
+                    }
+                  }
+                  Text { textFormat: Text.PlainText; objectName: "removeNovaNote"; visible: !root.removeNovaSure; width: parent.width; wrapMode: Text.Wrap
+                         text: (root.removeNovaChoice === "everything" ? "Your password is asked once, in the terminal, to remove Ollama and its model folder." : "No password needed.")
+                           + " OpenCode stays (Omarchy installed it); NOVA's settings for it go."
+                         color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                  Text { textFormat: Text.PlainText; objectName: "removeNovaSureText"; visible: root.removeNovaSure; width: parent.width; wrapMode: Text.Wrap
+                         text: "Are you sure? This removes " + (root.removeNovaChoice === "everything" ? "NOVA, " + root.discoveredModels.length + (root.discoveredModels.length === 1 ? " model" : " models") + " and Ollama"
+                           : root.removeNovaChoice === "models" ? "NOVA and " + root.discoveredModels.length + (root.discoveredModels.length === 1 ? " model" : " models") : "NOVA") + " for good."
+                           + (root.removeNovaChoice !== "nova" && root.discoveredModels.length ? " Getting the models back means downloading " + root.removeNovaFrees("models") + " again." : "")
+                           + " A terminal opens and shows each step."
+                         color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                  Text { textFormat: Text.PlainText; objectName: "removeNovaBlocker"; visible: removeNovaCard.blocker !== ""; width: parent.width; wrapMode: Text.Wrap; text: removeNovaCard.blocker; color: root.cliTightColor; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                  Item {
+                    width: parent.width; height: removeNovaCancel.height + Style.spacing.xs
+                    CompactModelButton { id: removeNovaCancel; objectName: "removeNovaCancel"; y: Style.spacing.xs; text: root.removeNovaSure ? "KEEP NOVA" : "CANCEL"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: true
+                                         onClicked: root.removeNovaSure ? root.removeNovaSure = false : root.closeRemoveNova() }
+                    CompactModelButton {
+                      objectName: "removeNovaGo"
+                      anchors.right: parent.right; y: Style.spacing.xs
+                      text: !root.removeNovaSure ? "REMOVE…" : (root.removeNovaChoice === "everything" ? "REMOVE EVERYTHING" : root.removeNovaChoice === "models" ? "REMOVE NOVA AND MODELS" : "REMOVE NOVA")
+                      foreground: removeNovaCard.red; accent: removeNovaCard.red; bordered: true; focusable: true
+                      enabled: removeNovaCard.blocker === ""
+                      opacity: enabled ? 1 : 0.5
+                      Accessible.name: text
+                      onClicked: root.removeNovaSure ? root.launchRemoveNova() : root.removeNovaSure = true
+                    }
+                  }
+                }
+              }
+            }
+            Item {
               id: approvalCard
               objectName: "approvalCard"
               width: parent.width
@@ -5381,15 +5624,28 @@ Ui.Panel {
               Accessible.name: "Refresh local models"
               onClicked: root.refreshModels()
             }
+            CompactModelButton {
+              objectName: "browseDownloadsWhileUnavailable"
+              anchors.horizontalCenter: parent.horizontalCenter
+              text: root.browseDownloadsLabel()
+              tooltipText: "Show the models you can download once Ollama is ready"
+              foreground: root.foreground; accent: root.accent; bordered: true; focusable: true
+              Accessible.name: text
+              onClicked: root.toggleCatalogDownloads()
+            }
           }
           Flickable {
             id: modelList; objectName: "modelList"
             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
-            anchors.bottom: browseModelDownloadsButton.top
+            anchors.bottom: parent.bottom
             anchors.leftMargin: Style.spacing.sm; anchors.rightMargin: Style.spacing.sm + Style.spacing.xs
-            anchors.topMargin: Style.spacing.xs; anchors.bottomMargin: Style.spacing.xs  // run 5: the button sat on the list
+            anchors.topMargin: Style.spacing.xs; anchors.bottomMargin: Style.spacing.xs
             visible: !root.modelsUnavailable || root.catalogDownloadsExpanded
             clip: true; contentWidth: width; contentHeight: modelColumn.implicitHeight; boundsBehavior: Flickable.StopAtBounds; interactive: contentHeight > height
+            // A card closing shortens the list; snap back into bounds at once, so the next
+            // click lands on its button instead of only stopping the spring-back.
+            rebound: Transition { NumberAnimation { properties: "x,y"; duration: 0 } }
+            onContentHeightChanged: if (contentY > Math.max(0, contentHeight - height)) contentY = Math.max(0, contentHeight - height)
             Column { id: modelColumn; objectName: "modelColumn"; width: modelList.width; spacing: Style.spacing.xs
               Column {
                 id: installedModelsSection
@@ -5401,9 +5657,22 @@ Ui.Panel {
                   width: parent.width
                   height: Math.max(installedTitle.implicitHeight, refreshInstalledRow.height)
                   Text { textFormat: Text.PlainText; id: installedTitle; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; text: "INSTALLED · " + root.discoveredModels.length; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.4 }
-                  Text { textFormat: Text.PlainText; anchors.left: installedTitle.right; anchors.leftMargin: Style.spacing.sm; anchors.verticalCenter: parent.verticalCenter; text: "on this computer" + (root.modelUpdatesAvailable > 0 ? " · " + root.modelUpdatesAvailable + (root.modelUpdatesAvailable === 1 ? " update" : " updates") : ""); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
-                  Item { id: refreshInstalledRow; anchors.right: parent.right; width: childrenRect.width; height: childrenRect.height
+                  Text { textFormat: Text.PlainText; anchors.left: installedTitle.right; anchors.leftMargin: Style.spacing.sm; anchors.right: refreshInstalledRow.left; anchors.rightMargin: Style.spacing.sm; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight
+                         text: root.modelUpdatesAvailable > 0 ? root.modelUpdatesAvailable + (root.modelUpdatesAvailable === 1 ? " update" : " updates") : ""; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                  Row { id: refreshInstalledRow; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; spacing: Style.spacing.xxs
                     CompactModelButton { objectName: "refreshInstalledModelsButton"; text: root.modelUpdatesChecking ? "CHECKING…" : "REFRESH"; tooltipText: "Re-read the installed models and ask Ollama's library for newer builds"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: true; enabled: !root.installedModelsLoading; Accessible.name: "Refresh installed models and check for updates"; onClicked: { root.refreshModels(); root.refreshModelUpdates(true) } }
+                    CompactModelButton {
+                      id: browseModelDownloadsButton
+                      objectName: "browseModelDownloadsButton"
+                      text: root.browseDownloadsLabel()
+                      tooltipText: root.catalogDownloadsExpanded ? "Hide the download catalog"
+                        : (root.catalogAttention() ? root.catalogAttention().label + " for " + root.catalogAttention().target
+                        : "Show the models you can download, installation progress and recovery actions")
+                      foreground: root.foreground; accent: root.accent; bordered: true; focusable: true
+                      selected: !root.catalogDownloadsExpanded
+                      Accessible.name: text
+                      onClicked: root.toggleCatalogDownloads()
+                    }
                   }
                 }
                 Text { textFormat: Text.PlainText; width: parent.width; visible: root.installedModelsLoading; text: "REFRESHING INSTALLED INVENTORY…"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 1 }
@@ -5427,6 +5696,8 @@ Ui.Panel {
                     Column {
                       id: installedModelRow
                       readonly property var catalogMatch: root.matchedCatalogEntryFor(modelData)
+                      readonly property bool loadable: modelData !== null && typeof modelData !== "undefined" && modelData.provider === "ollama"
+                        && modelData.available === true && !root.installedModelReady(modelData) && !root.cliLoadingModel(modelData.id)
                       x: Style.spacing.sm; y: Style.spacing.sm
                       width: parent.width - 2 * Style.spacing.sm
                       spacing: 3
@@ -5453,33 +5724,95 @@ Ui.Panel {
                           color: "transparent"; border.width: 1; border.color: root.accent
                           Text { textFormat: Text.PlainText; id: updateTagText; anchors.centerIn: parent; text: "UPDATE"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2; font.bold: true; font.letterSpacing: 1 }
                         }
-                        Text { textFormat: Text.PlainText; id: installedModelSize; anchors.right: parent.right; y: Style.space(1); text: modelData.metadata && typeof modelData.metadata.size_bytes === "number" ? root.bytesLabel(modelData.metadata.size_bytes) : ""; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                        Text { textFormat: Text.PlainText; id: installedModelSize; anchors.right: parent.right; y: Style.space(1); text: modelData.metadata && typeof modelData.metadata.size_bytes === "number" ? root.bytesLabel(modelData.metadata.size_bytes) : ""; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                       }
-                      Text {
-                        textFormat: Text.PlainText
-                        objectName: "installedModelStatusText"
-                        width: parent.width
-                        // The exact Ollama name, then what it's doing; IN USE is the tag above.
-                        wrapMode: Text.Wrap
-                        text: modelData.id + " · " + (root.modelTransitionActive && root.transitionTarget === modelData.id ? "SWITCHING TO IT…"
-                          : (modelData.available !== true ? "UNAVAILABLE"
-                          : (modelData.resident === true ? "IN " + root.memoryWord.toUpperCase() + " (unloads 10 min after last use)"
-                          : (root.installedModelSelected(modelData) ? "loads with your first message" : "INSTALLED"))))
-                        color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.55)
-                        font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.4
-                      }
+                      // MODELS v2 (mock previews/models-v2): the facts as words, then DETAILS and the icons.
                       Item {
-                      width: parent.width
-                      height: Math.max(installedModelActions.height, installedModelIcons.height)
+                        width: parent.width
+                        height: Math.max(installedFacts.height, installedModelEnd.height)
+                        Row {
+                          id: installedFacts
+                          anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
+                          width: parent.width - installedModelEnd.width - Style.spacing.sm
+                          spacing: Style.spacing.xs
+                          FactWord { id: installedFitWord; anchors.verticalCenter: parent.verticalCenter; text: root.fitWord(root.installedFit(modelData)); tone: root.fitTone(root.installedFit(modelData)) }
+                          Text {
+                            textFormat: Text.PlainText
+                            objectName: "installedModelStatusText"
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - (installedFitWord.visible ? installedFitWord.width + parent.spacing : 0)
+                            wrapMode: Text.Wrap
+                            text: root.installedFacts(modelData)
+                            color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.55)
+                            font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.4
+                          }
+                        }
+                        Row {
+                          id: installedModelEnd
+                          anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                          spacing: Style.spacing.xxs
+                          CompactModelButton {
+                            id: installedModelDetailsButton
+                            objectName: "installedModelDetailsButton"
+                            text: root.installedModelDetailsOpen(modelData) ? "LESS" : "DETAILS"
+                            tooltipText: "The exact name, the fit and the catalog's facts for this model"
+                            foreground: root.cardSoftText; accent: root.accent; bordered: false; focusable: true
+                            opacity: enabled ? 1 : 0.46
+                            Accessible.name: (root.installedModelDetailsOpen(modelData) ? "Hide details of " : "Details of ") + modelData.id
+                            onClicked: root.toggleInstalledModelDetails(modelData)
+                          }
+                          Row {
+                            id: installedModelIcons
+                            objectName: "installedModelIcons"
+                            spacing: Style.spacing.xxs
+                            Ui.PanelActionButton {
+                              objectName: "unloadModelButton"
+                              visible: modelData !== null && typeof modelData !== "undefined" && modelData.resident === true
+                              iconText: "⏏"
+                              tooltipText: root.unloadTooltip(modelData)
+                              height: installedModelDetailsButton.height
+                              width: height
+                              fontSize: Math.round(height * 0.55)
+                              foreground: root.foreground
+                              hoverColor: root.accent
+                              bordered: true
+                              focusable: visible
+                              enabled: !root.removalBusy
+                              opacity: enabled ? 1 : 0.46
+                              Accessible.name: "Free " + root.memoryWord + " used by " + modelData.id
+                              onClicked: root.unloadModel(modelData)
+                            }
+                            Ui.PanelActionButton {
+                              objectName: "deleteModelButton"
+                              visible: modelData !== null && typeof modelData !== "undefined" && modelData.provider === "ollama"
+                              iconText: "󰩹"
+                              tooltipText: root.removalTooltip(modelData)
+                              height: installedModelDetailsButton.height
+                              width: height
+                              fontSize: Math.round(height * 0.55)
+                              foreground: root.destructiveColor
+                              hoverColor: root.destructiveColor
+                              bordered: true
+                              focusable: visible
+                              enabled: !root.removalBusy && root.pendingApproval === null
+                              opacity: enabled ? 1 : 0.46
+                              Accessible.name: "Delete " + modelData.id + " from this computer"
+                              onClicked: root.proposeModelRemoval(modelData)
+                            }
+                          }
+                        }
+                      }
                       Flow {
                         id: installedModelActions
                         objectName: "installedModelActions"
-                        width: parent.width - installedModelIcons.width - Style.spacing.sm
+                        visible: installedModelRow.loadable
+                        width: parent.width
+                        topPadding: Style.space(3)
                         spacing: Style.spacing.xxs
                         CompactModelButton {
+                          id: loadInstalledModelButton
                           objectName: "loadInstalledModelButton"
-                          visible: modelData !== null && typeof modelData !== "undefined" && modelData.provider === "ollama"
-                            && modelData.available === true && !root.installedModelReady(modelData) && !root.cliLoadingModel(modelData.id)
+                          visible: installedModelRow.loadable
                           text: root.isSwitchDestination(modelData) ? "LOADING…"
                             : (root.installedModelSelected(modelData) ? "LOAD AND VERIFY" : "LOAD AND USE")
                           tooltipText: root.isSwitchDestination(modelData) ? "Loading and verifying " + modelData.id
@@ -5490,98 +5823,6 @@ Ui.Panel {
                           Accessible.name: text + " " + modelData.id
                           onClicked: root.loadInstalledModel(modelData)
                         }
-                        CompactModelButton {
-                          objectName: "openCliButton"
-                          // Run 7: a fresh install has no profile file, so the button could only fail; hide it.
-                          // Unknown availability (action service down) keeps it, with the reason on click.
-                          visible: modelData !== null && typeof modelData !== "undefined" && modelData.provider === "ollama"
-                            && !(root.cliState && root.cliState.configured === false)
-                          text: root.cliRunning(modelData) ? "CLI RUNNING" : "OPEN CLI"
-                          tooltipText: root.cliCanLaunch(modelData)
-                            ? "Open the configured coding CLI for " + modelData.id + " in a new terminal"
-                            : root.cliUnavailableReason(modelData)
-                          // Stays clickable when unavailable so the reason can be shown, not hidden.
-                          readonly property bool launchable: root.cliCanLaunch(modelData)
-                          foreground: launchable ? root.foreground : root.muted
-                          accent: root.accent; bordered: true; focusable: visible
-                          opacity: launchable ? 1 : 0.6
-                          enabled: visible && !root.cliRequesting
-                          Accessible.name: text + " " + modelData.id
-                          Accessible.description: tooltipText
-                          onClicked: launchable ? root.beginCliLaunch(modelData) : root.explainCliUnavailable(modelData)
-                        }
-                        CompactModelButton {
-                          objectName: "setUpCodingCliButton"
-                          visible: modelData !== null && typeof modelData !== "undefined" && modelData.provider === "ollama"
-                            && modelData.available === true && root.cliState !== null && root.openCodeProfile(modelData) === null
-                          text: root.cliSetupModel === modelData.id ? "CLOSE SETUP" : "SET UP CODING CLI"
-                          tooltipText: "Connect OpenCode (Omarchy installs it) to " + modelData.id + ": one approval, nothing downloaded by NOVA"
-                          foreground: root.foreground; accent: root.accent; bordered: true; focusable: visible
-                          Accessible.name: text + " " + modelData.id
-                          onClicked: root.cliSetupModel === modelData.id ? root.cliSetupModel = "" : root.openCliSetup(modelData)
-                        }
-                        CompactModelButton {
-                          objectName: "tuneCodingCliButton"
-                          visible: modelData !== null && typeof modelData !== "undefined" && root.openCodeProfile(modelData) !== null
-                          text: root.cliTuneModel === modelData.id ? "CLOSE TUNE" : "TUNE"
-                          tooltipText: "The coding CLI's working context, with what fits your graphics card"
-                          foreground: root.foreground; accent: root.accent; bordered: true; focusable: visible
-                          Accessible.name: text + " " + modelData.id
-                          onClicked: root.cliTuneModel === modelData.id ? root.cliTuneModel = "" : root.openCliTune(modelData)
-                        }
-                        CompactModelButton {
-                          id: installedModelDetailsButton
-                          objectName: "installedModelDetailsButton"
-                          text: root.installedModelDetailsOpen(modelData) ? "HIDE DETAILS" : "DETAILS"
-                          tooltipText: "Show matched catalog details for this installed model"
-                          foreground: enabled ? root.foreground : root.muted
-                          accent: root.accent; bordered: false; focusable: true
-                          background: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.07)
-                          opacity: enabled ? 1 : 0.46
-                          Accessible.name: text
-                          onClicked: root.toggleInstalledModelDetails(modelData)
-                        }
-                      }
-                      Row {
-                        id: installedModelIcons
-                        objectName: "installedModelIcons"
-                        anchors.right: parent.right
-                        spacing: Style.spacing.xxs
-                        Ui.PanelActionButton {
-                          objectName: "unloadModelButton"
-                          visible: modelData !== null && typeof modelData !== "undefined" && modelData.resident === true
-                          iconText: "⏏"
-                          tooltipText: root.unloadTooltip(modelData)
-                          height: installedModelDetailsButton.height
-                          width: height
-                          fontSize: Math.round(height * 0.55)
-                          foreground: root.foreground
-                          hoverColor: root.accent
-                          bordered: true
-                          focusable: visible
-                          enabled: !root.removalBusy
-                          opacity: enabled ? 1 : 0.46
-                          Accessible.name: "Free " + root.memoryWord + " used by " + modelData.id
-                          onClicked: root.unloadModel(modelData)
-                        }
-                        Ui.PanelActionButton {
-                          objectName: "deleteModelButton"
-                          visible: modelData !== null && typeof modelData !== "undefined" && modelData.provider === "ollama"
-                          iconText: "󰩹"
-                          tooltipText: root.removalTooltip(modelData)
-                          height: installedModelDetailsButton.height
-                          width: height
-                          fontSize: Math.round(height * 0.55)
-                          foreground: root.destructiveColor
-                          hoverColor: root.destructiveColor
-                          bordered: true
-                          focusable: visible
-                          enabled: !root.removalBusy && root.pendingApproval === null
-                          opacity: enabled ? 1 : 0.46
-                          Accessible.name: "Delete " + modelData.id + " from this computer"
-                          onClicked: root.proposeModelRemoval(modelData)
-                        }
-                      }
                       }
                       // 0.14.0: Ollama's newer build of this model, offered only after the user asks.
                       Column {
@@ -5679,6 +5920,90 @@ Ui.Panel {
                         color: root.removalFailed ? Commons.Color.urgent : root.accent
                         font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.6
                       }
+                      // MODELS v2: the model's coding CLIs, under a dashed line, each row with its own buttons.
+                      Column {
+                        id: codingCliRows
+                        objectName: "codingCliRows"
+                        readonly property var profiles: root.cliProfilesFor(modelData)
+                        readonly property var openCode: root.openCodeProfile(modelData)
+                        // Run 7: a fresh install has no profile file, so OPEN CLI could only fail; it shows
+                        // once this model has a CLI, or when NOVA can't tell (the reason is on the button).
+                        readonly property bool hasCli: modelData !== null && typeof modelData !== "undefined" && modelData.provider === "ollama"
+                          && (profiles.length > 0 || root.cliState === null) && !(root.cliState && root.cliState.configured === false)
+                        readonly property bool canSetUp: modelData !== null && typeof modelData !== "undefined" && modelData.provider === "ollama"
+                          && modelData.available === true && root.cliState !== null && openCode === null
+                        visible: hasCli || canSetUp
+                        width: parent.width
+                        topPadding: Style.space(4)
+                        spacing: Style.spacing.xxs
+                        Row {
+                          width: parent.width; spacing: Style.space(3); clip: true
+                          Repeater { model: Math.ceil(parent.width / 7); Rectangle { width: 4; height: 1; color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18) } }
+                        }
+                        Item {
+                          visible: codingCliRows.hasCli
+                          width: parent.width; height: Math.max(cliRowLabel.implicitHeight, cliRowButtons.height)
+                          Text { id: cliRowLabel; textFormat: Text.PlainText; anchors.verticalCenter: parent.verticalCenter; width: Style.space(80)
+                                 text: "CODING CLI"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2; font.bold: true; font.letterSpacing: 1.2 }
+                          Text {
+                            textFormat: Text.PlainText
+                            objectName: "codingCliLine"
+                            anchors.left: cliRowLabel.right; anchors.right: cliRowButtons.left; anchors.rightMargin: Style.spacing.sm; anchors.verticalCenter: parent.verticalCenter
+                            elide: Text.ElideRight
+                            text: root.codingCliSummary(modelData, codingCliRows.profiles)
+                            color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption
+                          }
+                          Row {
+                            id: cliRowButtons
+                            anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                            spacing: Style.spacing.xxs
+                            CompactModelButton {
+                              objectName: "openCliButton"
+                              text: root.cliRunning(modelData) ? "CLI RUNNING" : "OPEN CLI"
+                              tooltipText: root.cliCanLaunch(modelData)
+                                ? "Open the configured coding CLI for " + modelData.id + " in a new terminal"
+                                : root.cliUnavailableReason(modelData)
+                              // Stays clickable when unavailable so the reason can be shown, not hidden.
+                              readonly property bool launchable: root.cliCanLaunch(modelData)
+                              foreground: launchable ? root.foreground : root.muted
+                              accent: root.accent; bordered: true; focusable: visible
+                              selected: launchable && codingCliRows.openCode !== null
+                              opacity: launchable ? 1 : 0.6
+                              enabled: visible && !root.cliRequesting
+                              Accessible.name: text + " " + modelData.id
+                              Accessible.description: tooltipText
+                              onClicked: launchable ? root.beginCliLaunch(modelData) : root.explainCliUnavailable(modelData)
+                            }
+                            CompactModelButton {
+                              objectName: "tuneCodingCliButton"
+                              visible: codingCliRows.openCode !== null
+                              text: root.cliTuneModel === modelData.id ? "CLOSE TUNE" : "TUNE"
+                              tooltipText: "The coding CLI's working context, with what fits your graphics card"
+                              foreground: root.foreground; accent: root.accent; bordered: true; focusable: visible
+                              Accessible.name: text + " " + modelData.id
+                              onClicked: root.cliTuneModel === modelData.id ? root.cliTuneModel = "" : root.openCliTune(modelData)
+                            }
+                          }
+                        }
+                        Item {
+                          visible: codingCliRows.canSetUp
+                          width: parent.width; height: Math.max(setUpRowText.implicitHeight, setUpCodingCliButton.height)
+                          Text { id: setUpRowLabel; textFormat: Text.PlainText; anchors.verticalCenter: parent.verticalCenter; width: Style.space(80)
+                                 text: codingCliRows.hasCli ? "" : "CODING CLI"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2; font.bold: true; font.letterSpacing: 1.2 }
+                          Text { id: setUpRowText; textFormat: Text.PlainText; anchors.left: setUpRowLabel.right; anchors.verticalCenter: parent.verticalCenter
+                                 text: codingCliRows.hasCli ? "OpenCode · not set up" : "Not set up"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                          CompactModelButton {
+                            id: setUpCodingCliButton
+                            objectName: "setUpCodingCliButton"
+                            anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                            text: root.cliSetupModel === modelData.id ? "CLOSE" : "SET UP"
+                            tooltipText: "Connect OpenCode (Omarchy installs it) to " + modelData.id + ": one approval, nothing downloaded by NOVA"
+                            foreground: root.foreground; accent: root.accent; bordered: true; focusable: visible
+                            Accessible.name: (root.cliSetupModel === modelData.id ? "Close the coding CLI setup for " : "Set up a coding CLI for ") + modelData.id
+                            onClicked: root.cliSetupModel === modelData.id ? root.cliSetupModel = "" : root.openCliSetup(modelData)
+                          }
+                        }
+                      }
                       Rectangle {
                         id: cliConfirmCard
                         objectName: "cliConfirmCard"
@@ -5767,90 +6092,103 @@ Ui.Panel {
                           }
                         }
                       }
-                      Text {
-                        textFormat: Text.PlainText
-                        objectName: "codingCliLine"
-                        readonly property var profile: root.openCodeProfile(modelData)
-                        visible: profile !== null
-                        width: parent.width; wrapMode: Text.Wrap
-                        text: profile ? "CODING CLI · OpenCode · " + (profile.project_place || profile.project_label) + " · " + root.contextLabel(profile.context)
-                          + " · " + (profile.care === "edits" ? "asks before commands" : "asks before edits and commands") : ""
-                        color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.55)
-                        font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.4
-                      }
-                      // 0.15: SET UP CODING CLI (mock previews/v015-first-run, state 2).
+                      // SET UP CODING CLI (MODELS v2: three labelled choices, the fit as a word).
                       Item {
                         objectName: "codingCliSetupCard"
                         visible: root.cliSetupModel === modelData.id
                         width: parent.width
                         height: visible ? setupColumn.implicitHeight + 2 * Style.spacing.sm : 0
-                        Rectangle { anchors.fill: parent; color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.07); border.width: 1; border.color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.5) }
+                        Rectangle { anchors.fill: parent; color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.05); border.width: 1; border.color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.35) }
                         Column {
                           id: setupColumn
                           x: Style.spacing.sm; y: Style.spacing.sm; width: parent.width - 2 * Style.spacing.sm
                           spacing: Style.spacing.xs
                           readonly property var tool: root.cliSetupState ? root.cliSetupTool() : null
-                          Text { textFormat: Text.PlainText; text: "SET UP A CODING CLI"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.2 }
+                          readonly property var verdict: root.cliSetupState ? root.cliVerdict(root.cliSetupState.numbers, root.cliSetupState.context) : null
+                          readonly property real labelWidth: Style.space(78)
+                          Row {
+                            width: parent.width; spacing: Style.spacing.sm
+                            Text { textFormat: Text.PlainText; text: "SET UP OPENCODE"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 1; font.bold: true; font.letterSpacing: 1.2 }
+                            Text { textFormat: Text.PlainText; width: parent.width - x; elide: Text.ElideRight; text: "a coding agent that edits files and runs tests in one folder"; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 1 }
+                          }
                           Text { textFormat: Text.PlainText; visible: !root.cliSetupState && root.cliSetupError === ""; text: "Checking this computer…"; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
-                          Text { textFormat: Text.PlainText; visible: !!root.cliSetupState; width: parent.width; wrapMode: Text.Wrap
-                                 text: !setupColumn.tool ? "" : setupColumn.tool.available === true
-                                   ? "OpenCode · a full-screen coding agent: it plans, edits files and runs tests in one folder." + (setupColumn.tool.downloads_on_first_start ? " Its first start downloads it (Omarchy's installer; the terminal shows the progress)." : "")
-                                   : "OpenCode isn't on this computer. Omarchy installs it; run Omarchy's update, then open this again."
-                                 color: setupColumn.tool && setupColumn.tool.available === true ? root.foreground : root.destructiveColor; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
-                          Text { textFormat: Text.PlainText; visible: !!root.cliSetupState; text: "PROJECT FOLDER · IT WORKS ONLY INSIDE THIS FOLDER"; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 1; font.letterSpacing: 1 }
-                          Flow {
-                            visible: !!root.cliSetupState; width: parent.width; spacing: Style.spacing.xxs
-                            Repeater {
-                              model: root.cliSetupState && Array.isArray(root.cliSetupState.projects) ? root.cliSetupState.projects : []
-                              CompactModelButton {
-                                required property var modelData
-                                objectName: "codingCliProjectButton"
-                                text: modelData; selected: root.cliSetupProject === modelData
-                                foreground: root.foreground; accent: root.accent; bordered: true; focusable: true
-                                onClicked: root.cliSetupProject = modelData
+                          Text { textFormat: Text.PlainText; visible: !!(setupColumn.tool && setupColumn.tool.available !== true); width: parent.width; wrapMode: Text.Wrap
+                                 text: "OpenCode isn't on this computer. Omarchy installs it; run Omarchy's update, then open this again."
+                                 color: root.destructiveColor; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                          Item {
+                            visible: !!root.cliSetupState; width: parent.width; height: Math.max(folderLabel.implicitHeight, folderChoices.height)
+                            Text { id: folderLabel; textFormat: Text.PlainText; y: Style.space(4); width: setupColumn.labelWidth; text: "FOLDER"; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2; font.letterSpacing: 1.2 }
+                            Flow {
+                              id: folderChoices
+                              x: setupColumn.labelWidth; width: parent.width - x; spacing: Style.spacing.xxs
+                              Repeater {
+                                model: root.cliSetupState && Array.isArray(root.cliSetupState.projects) ? root.cliSetupState.projects : []
+                                CompactModelButton {
+                                  required property var modelData
+                                  objectName: "codingCliProjectButton"
+                                  text: modelData; selected: root.cliSetupProject === modelData
+                                  tooltipText: "OpenCode works only inside " + modelData
+                                  foreground: root.foreground; accent: root.accent; bordered: true; focusable: true
+                                  onClicked: root.cliSetupProject = modelData
+                                }
                               }
+                              Text { textFormat: Text.PlainText; visible: !!root.cliSetupState && !(root.cliSetupState.projects && root.cliSetupState.projects.length); width: parent.width; wrapMode: Text.Wrap
+                                     text: "No folder in your home folder yet. Make one for your code (for example ~/Code), then open this again."; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                             }
                           }
-                          Text { textFormat: Text.PlainText; visible: !!root.cliSetupState && !(root.cliSetupState.projects && root.cliSetupState.projects.length); width: parent.width; wrapMode: Text.Wrap
-                                 text: "No folder found in your home folder. Make one for your code (for example ~/Code), then open this again."; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
-                          Text { textFormat: Text.PlainText; visible: !!root.cliSetupState; text: "HOW CAREFUL"; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 1; font.letterSpacing: 1 }
-                          Flow {
-                            visible: !!root.cliSetupState; width: parent.width; spacing: Style.spacing.xxs
-                            CompactModelButton { objectName: "codingCliCareAsk"; text: "ASK BEFORE EDITS AND COMMANDS"; selected: root.cliSetupCare === "ask"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: true; onClicked: root.cliSetupCare = "ask" }
-                            CompactModelButton { objectName: "codingCliCareEdits"; text: "EDIT FREELY, ASK BEFORE COMMANDS"; selected: root.cliSetupCare === "edits"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: true; onClicked: root.cliSetupCare = "edits" }
+                          Item {
+                            visible: !!root.cliSetupState; width: parent.width; height: Math.max(asksLabel.implicitHeight, asksChoices.height)
+                            Text { id: asksLabel; textFormat: Text.PlainText; y: Style.space(4); width: setupColumn.labelWidth; text: "ASKS"; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2; font.letterSpacing: 1.2 }
+                            Flow {
+                              id: asksChoices
+                              x: setupColumn.labelWidth; width: parent.width - x; spacing: Style.spacing.xxs
+                              CompactModelButton { objectName: "codingCliCareAsk"; text: "before edits and commands"; tooltipText: "You see each change and command first. Recommended to start."; selected: root.cliSetupCare === "ask"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: true; onClicked: root.cliSetupCare = "ask" }
+                              CompactModelButton { objectName: "codingCliCareEdits"; text: "before commands only"; tooltipText: "It edits files freely; commands still need your yes."; selected: root.cliSetupCare === "edits"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: true; onClicked: root.cliSetupCare = "edits" }
+                            }
                           }
-                          Text { textFormat: Text.PlainText; visible: !!root.cliSetupState; width: parent.width; wrapMode: Text.Wrap
-                                 text: root.cliSetupCare === "ask" ? "You see each change and command first. Recommended to start." : "Faster for real work; commands still need your yes."
-                                 color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
-                          Text { textFormat: Text.PlainText; visible: !!root.cliSetupState; width: parent.width; wrapMode: Text.Wrap
-                                 text: root.cliSetupState ? "MODEL · " + root.cliSetupState.build + " · " + modelData.id + " with a " + root.contextLabel(root.cliSetupState.context) + " working context, made from the files you have (no download)" : ""
-                                 color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
-                          Text { textFormat: Text.PlainText; objectName: "codingCliSetupVerdict"; visible: !!(root.cliSetupState && root.cliSetupState.verdict); width: parent.width; wrapMode: Text.Wrap; font.bold: true
-                                 text: visible ? root.cliSetupState.verdict.text : ""
-                                 color: visible ? root.verdictColor(root.cliSetupState.verdict.level, root.cliSetupState.verdict.past_native) : root.muted
-                                 font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                          Item {
+                            visible: !!root.cliSetupState; width: parent.width; height: setupContextRow.height
+                            Text { textFormat: Text.PlainText; anchors.verticalCenter: parent.verticalCenter; width: setupColumn.labelWidth; text: "CONTEXT"; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2; font.letterSpacing: 1.2 }
+                            Row {
+                              id: setupContextRow
+                              x: setupColumn.labelWidth; width: parent.width - x; spacing: Style.spacing.xs
+                              Text { textFormat: Text.PlainText; anchors.verticalCenter: parent.verticalCenter; text: root.cliSetupState ? root.contextLabel(root.cliSetupState.context) : ""; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                              FactWord { objectName: "codingCliSetupWord"; anchors.verticalCenter: parent.verticalCenter; text: setupColumn.verdict ? setupColumn.verdict.word : ""; tone: setupColumn.verdict ? root.verdictColor(setupColumn.verdict.level, false) : root.accent }
+                              Text { textFormat: Text.PlainText; objectName: "codingCliSetupVerdict"; anchors.verticalCenter: parent.verticalCenter; width: parent.width - x; elide: Text.ElideRight
+                                     text: setupColumn.verdict ? setupColumn.verdict.short + " · change it later with TUNE" : (root.cliSetupState && root.cliSetupState.verdict ? root.cliSetupState.verdict.text : "NOVA can't estimate this model's memory; TUNE changes it later.")
+                                     color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                            }
+                          }
                           Text { textFormat: Text.PlainText; visible: root.cliSetupError !== ""; width: parent.width; wrapMode: Text.Wrap; text: root.cliSetupError; color: root.destructiveColor; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
-                          Flow {
-                            width: parent.width; spacing: Style.spacing.xxs
-                            CompactModelButton {
-                              objectName: "codingCliSetUpButton"
-                              text: root.cliSetupBusy ? "ASKING…" : "SET UP"
-                              selected: true; foreground: root.foreground; accent: root.accent; bordered: true; focusable: true
-                              enabled: !!(setupColumn.tool && setupColumn.tool.available === true) && root.cliSetupProject !== "" && !root.cliSetupBusy && !root.pendingApproval
-                              opacity: enabled ? 1 : 0.5
-                              onClicked: root.proposeCliSetup()
+                          Item {
+                            width: parent.width; height: setupActions.height
+                            Row {
+                              id: setupActions
+                              spacing: Style.spacing.xxs
+                              CompactModelButton {
+                                objectName: "codingCliSetUpButton"
+                                text: root.cliSetupBusy ? "ASKING…" : "SET UP"
+                                tooltipText: "One approval lists every change before anything happens"
+                                selected: true; foreground: root.foreground; accent: root.accent; bordered: true; focusable: true
+                                enabled: !!(setupColumn.tool && setupColumn.tool.available === true) && root.cliSetupProject !== "" && !root.cliSetupBusy && !root.pendingApproval
+                                opacity: enabled ? 1 : 0.5
+                                onClicked: root.proposeCliSetup()
+                              }
+                              CompactModelButton { text: "CANCEL"; foreground: root.cardSoftText; accent: root.accent; bordered: false; focusable: true; onClicked: root.cliSetupModel = "" }
                             }
-                            CompactModelButton { text: "CANCEL"; foreground: root.muted; accent: root.accent; bordered: false; focusable: true; onClicked: root.cliSetupModel = "" }
+                            Text { textFormat: Text.PlainText; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                                   visible: !!(setupColumn.tool && setupColumn.tool.available === true && setupColumn.tool.downloads_on_first_start) && width < parent.width - setupActions.width
+                                   text: "its first start downloads OpenCode"; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 1 }
                           }
                         }
                       }
-                      // 0.15: TUNE (mock state 5): the working context with a live graphics-memory meter.
+                      // TUNE (MODELS v2): one number, one word, one bar; marks only where they mean something.
                       Item {
                         objectName: "codingCliTuneCard"
                         visible: root.cliTuneModel === modelData.id
                         width: parent.width
                         height: visible ? tuneColumn.implicitHeight + 2 * Style.spacing.sm : 0
-                        Rectangle { anchors.fill: parent; color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.07); border.width: 1; border.color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.5) }
+                        Rectangle { anchors.fill: parent; color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.05); border.width: 1; border.color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.35) }
                         Column {
                           id: tuneColumn
                           x: Style.spacing.sm; y: Style.spacing.sm; width: parent.width - 2 * Style.spacing.sm
@@ -5859,19 +6197,21 @@ Ui.Panel {
                           readonly property int tokens: root.cliTuneTokens()
                           readonly property var verdict: root.cliTuneVerdict()
                           readonly property var steps: root.cliTuneSteps()
-                          Text { textFormat: Text.PlainText; width: parent.width; wrapMode: Text.Wrap
-                                 text: "TUNE · " + (root.cliTuneState ? root.cliTuneState.build : "") + " · THE CODING CLI'S MODEL"
-                                 color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.2 }
+                          readonly property bool risky: !verdict || verdict.level !== "fits" || verdict.past
+                          Row {
+                            width: parent.width; spacing: Style.spacing.sm
+                            Text { textFormat: Text.PlainText; text: "WORKING CONTEXT"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 1; font.bold: true; font.letterSpacing: 1.2 }
+                            Text { textFormat: Text.PlainText; width: parent.width - x; elide: Text.ElideRight; text: "how much code and conversation it keeps in mind"; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 1 }
+                          }
                           Text { textFormat: Text.PlainText; visible: !root.cliTuneState && root.cliTuneError === ""; text: "Reading its settings…"; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
-                          Text { textFormat: Text.PlainText; visible: !!root.cliTuneState; text: "WORKING CONTEXT · HOW MUCH CODE AND CONVERSATION IT KEEPS IN MIND"; width: parent.width; wrapMode: Text.Wrap; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 1; font.letterSpacing: 1 }
                           Row {
                             visible: !!root.cliTuneState; spacing: Style.spacing.sm
-                            Text { textFormat: Text.PlainText; id: tuneValueText; objectName: "codingCliTuneValue"; text: root.contextLabel(tuneColumn.tokens); color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall + 8 }
-                            Text { textFormat: Text.PlainText; anchors.baseline: tuneValueText.baseline
-                                   text: root.cliTuneState ? "recommended " + root.contextLabel(root.cliTuneState.recommended_context) + " · now " + root.contextLabel(root.cliTuneState.context) : ""
-                                   color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                            Text { textFormat: Text.PlainText; id: tuneValueText; objectName: "codingCliTuneValue"; text: root.contextLabel(tuneColumn.tokens); color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall + 8; font.bold: true }
+                            FactWord { objectName: "codingCliTuneWord"; anchors.verticalCenter: tuneValueText.verticalCenter; text: tuneColumn.verdict ? tuneColumn.verdict.word : "NOT CHECKED"; tone: tuneColumn.verdict ? root.verdictColor(tuneColumn.verdict.level, false) : root.cliTightColor }
+                            FactWord { objectName: "codingCliTunePast"; anchors.verticalCenter: tuneValueText.verticalCenter; text: tuneColumn.verdict && tuneColumn.verdict.past ? "PAST TRAINED" : ""; tone: root.cliPastColor }
                           }
                           Ui.PanelSlider {
+                            id: tuneSlider
                             objectName: "codingCliTuneSlider"
                             visible: !!root.cliTuneState
                             width: parent.width
@@ -5883,33 +6223,34 @@ Ui.Panel {
                             onMoved: function(value) { root.cliTuneIndex = Math.round(value); root.cliTuneConfirm = false }
                             onReleased: function(value) { root.cliTuneIndex = Math.round(value) }
                           }
-                          // One label under each tick; ▲ marks what the model was trained for.
+                          // Labels only at the ends, the recommended step and what the model was trained for.
                           Item {
-                            id: tuneTicks
+                            id: tuneMarks
+                            objectName: "codingCliTuneMarks"
                             visible: !!root.cliTuneState
                             width: parent.width; height: visible ? Style.font.caption + 2 : 0
-                            readonly property real knob: Math.max(14, Math.round(Style.spacing.controlHeight * 0.38))
-                            Repeater {
-                              model: tuneColumn.steps
-                              Text {
-                                required property var modelData
-                                required property int index
-                                textFormat: Text.PlainText
-                                // Only every other label when they would crowd; the native one always.
-                                visible: tuneColumn.steps.length <= 9 || index % 2 === 0 || (tuneColumn.numbers && modelData === tuneColumn.numbers.native_context)
-                                text: root.contextLabel(modelData) + (tuneColumn.numbers && modelData === tuneColumn.numbers.native_context ? "▲" : "")
-                                x: Math.max(0, Math.min(tuneTicks.width - implicitWidth, tuneTicks.width * index / Math.max(1, tuneColumn.steps.length - 1) - implicitWidth / 2))
-                                color: tuneColumn.numbers && modelData === tuneColumn.numbers.native_context ? root.cliPastColor : root.cardSoftText
-                                font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2
-                              }
-                            }
+                            readonly property int last: Math.max(1, tuneColumn.steps.length - 1)
+                            readonly property int recommended: root.cliTuneState ? root.cliTuneState.recommended_context : 0
+                            readonly property int trained: tuneColumn.numbers ? tuneColumn.numbers.native_context : 0
+                            function at(tokens) { var i = tuneColumn.steps.indexOf(tokens); return i < 0 ? -1 : width * i / last }
+                            Text { id: tuneMin; textFormat: Text.PlainText; x: 0; visible: tuneColumn.steps.length > 0 && tuneRec.x > implicitWidth + Style.spacing.sm
+                                   text: tuneColumn.steps.length ? root.contextLabel(tuneColumn.steps[0]) : ""; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2 }
+                            Text { id: tuneRec; textFormat: Text.PlainText; visible: tuneMarks.at(tuneMarks.recommended) >= 0
+                                   x: Math.max(0, tuneMarks.at(tuneMarks.recommended) - implicitWidth + 4)
+                                   text: "recommended " + root.contextLabel(tuneMarks.recommended) + (tuneMarks.trained === tuneMarks.recommended ? " = trained" : "") + " ▲"
+                                   color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2 }
+                            Text { id: tuneNative; textFormat: Text.PlainText; visible: tuneMarks.trained !== tuneMarks.recommended && tuneMarks.at(tuneMarks.trained) >= 0
+                                   x: Math.max(tuneRec.x + tuneRec.implicitWidth + Style.spacing.sm, Math.min(tuneMarks.width - implicitWidth, tuneMarks.at(tuneMarks.trained) - 4))
+                                   text: "▲ " + root.contextLabel(tuneMarks.trained) + " trained"; color: root.cliPastColor; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2 }
+                            Text { textFormat: Text.PlainText; anchors.right: parent.right; visible: tuneColumn.steps.length > 1 && (!tuneNative.visible || tuneNative.x + tuneNative.implicitWidth < parent.width - implicitWidth - Style.spacing.sm)
+                                   text: tuneColumn.steps.length ? root.contextLabel(tuneColumn.steps[tuneColumn.steps.length - 1]) : ""; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2 }
                           }
-                          // The meter: model, context cache and runtime against what the card can give.
+                          // The meter: model, context cache and runtime against what the card can give; stripes spill.
                           Item {
                             objectName: "codingCliMeter"
                             visible: !!(root.cliTuneState && tuneColumn.numbers && tuneColumn.verdict)
-                            width: parent.width; height: Style.space(12)
-                            readonly property real total: visible ? Math.max(tuneColumn.numbers.budget_bytes, tuneColumn.verdict.need) * 1.04 : 1
+                            width: parent.width; height: Style.space(9)
+                            readonly property real total: visible ? Math.max(tuneColumn.numbers.budget_bytes, tuneColumn.verdict.need) : 1
                             function part(bytes) { return width * Math.max(0, bytes) / total }
                             Rectangle { anchors.fill: parent; color: "transparent"; border.width: 1; border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.25) }
                             Row {
@@ -5919,16 +6260,21 @@ Ui.Panel {
                                           color: tuneColumn.verdict ? root.verdictColor(tuneColumn.verdict.level, tuneColumn.verdict.past) : root.accent }
                               Rectangle { height: parent.height; width: parent.parent.visible ? parent.parent.part(tuneColumn.numbers.runtime_bytes) : 0; color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.3) }
                             }
-                            Rectangle { visible: parent.visible; x: parent.visible ? parent.part(tuneColumn.numbers.budget_bytes) : 0; y: -2; width: 2; height: parent.height + 4; color: root.foreground }
+                            Rectangle { visible: parent.visible && tuneColumn.verdict.level === "spills"; x: parent.visible ? parent.part(tuneColumn.numbers.budget_bytes) : 0; y: -2; width: 2; height: parent.height + 4; color: root.foreground }
                           }
-                          Text { textFormat: Text.PlainText; visible: !!(tuneColumn.numbers && tuneColumn.verdict); width: parent.width; wrapMode: Text.Wrap
-                                 text: visible ? "model " + root.gibLabel(tuneColumn.numbers.weights_bytes) + " · context " + root.gibLabel(tuneColumn.tokens * tuneColumn.numbers.kv_bytes_per_token)
-                                   + " · runtime " + root.gibLabel(tuneColumn.numbers.runtime_bytes) + " · │ what the " + (root.cliTuneState.gpu || "graphics card") + " can give: " + root.gibLabel(tuneColumn.numbers.budget_bytes) : ""
-                                 color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 1 }
-                          Text { textFormat: Text.PlainText; objectName: "codingCliTuneVerdict"; visible: !!root.cliTuneState; width: parent.width; wrapMode: Text.Wrap; font.bold: true
-                                 text: tuneColumn.verdict ? tuneColumn.verdict.text : "NOVA can't estimate graphics memory for this model, so it can't warn you. Change it only if you know it fits."
-                                 color: tuneColumn.verdict ? root.verdictColor(tuneColumn.verdict.level, tuneColumn.verdict.past) : root.cliTightColor
-                                 font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                          Item {
+                            visible: !!(tuneColumn.numbers && tuneColumn.verdict); width: parent.width; height: tuneKey.implicitHeight
+                            Text { id: tuneKey; textFormat: Text.PlainText
+                                   text: visible ? "model " + root.gibLabel(tuneColumn.numbers.weights_bytes).replace(" GiB", "") + " · context " + root.gibLabel(tuneColumn.tokens * tuneColumn.numbers.kv_bytes_per_token).replace(" GiB", "")
+                                     + " · runtime " + root.gibLabel(tuneColumn.numbers.runtime_bytes).replace(" GiB", "") + " GiB" : ""
+                                   color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2 }
+                            Text { textFormat: Text.PlainText; anchors.right: parent.right; visible: tuneKey.implicitWidth + implicitWidth + Style.spacing.sm < parent.width
+                                   text: root.cliTuneState ? (root.cliTuneState.gpu || "your graphics card") + " gives " + root.gibLabel(tuneColumn.numbers ? tuneColumn.numbers.budget_bytes : 0) : ""
+                                   color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2 }
+                          }
+                          Text { textFormat: Text.PlainText; objectName: "codingCliTuneVerdict"; visible: !!root.cliTuneState; width: parent.width; wrapMode: Text.Wrap
+                                 text: tuneColumn.verdict ? tuneColumn.verdict.short + "." : "NOVA can't estimate graphics memory for this model, so it can't warn you. Change it only if you know it fits."
+                                 color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                           // Are you sure? (risky settings only)
                           Item {
                             objectName: "codingCliTuneConfirm"
@@ -5941,7 +6287,7 @@ Ui.Panel {
                               Text { textFormat: Text.PlainText; width: parent.width; wrapMode: Text.Wrap; font.bold: true
                                      text: "ARE YOU SURE? · " + root.contextLabel(tuneColumn.tokens) + " " + (!tuneColumn.verdict ? "can't be checked on this model" : tuneColumn.verdict.level === "spills" ? "doesn't fit your graphics card" : tuneColumn.verdict.level === "tight" ? "leaves very little graphics memory" : "goes past what the model was trained for")
                                      color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
-                              Text { textFormat: Text.PlainText; width: parent.width; wrapMode: Text.Wrap; text: "You can always go back: TUNE → BACK TO RECOMMENDED, or ask the CLI to undo it."; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                              Text { textFormat: Text.PlainText; width: parent.width; wrapMode: Text.Wrap; text: "You can always go back: TUNE → BACK TO " + root.contextLabel(tuneMarks.recommended) + ", or ask the CLI to undo it."; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                               Flow {
                                 width: parent.width; spacing: Style.spacing.xxs
                                 CompactModelButton { objectName: "codingCliKeepButton"; text: "KEEP " + root.contextLabel(root.cliTuneState ? root.cliTuneState.context : 0); selected: true; foreground: root.foreground; accent: root.accent; bordered: true; focusable: true
@@ -5956,20 +6302,17 @@ Ui.Panel {
                             visible: !!root.cliTuneState && !root.cliTuneConfirm; width: parent.width; spacing: Style.spacing.xxs
                             CompactModelButton {
                               objectName: "codingCliSaveButton"
-                              readonly property bool plain: !!(tuneColumn.verdict && tuneColumn.verdict.level === "fits" && !tuneColumn.verdict.past)
-                              text: root.cliTuneBusy ? "SAVING…" : (plain ? "SAVE" : "SAVE ANYWAY…")
-                              selected: plain; foreground: plain ? root.foreground : (tuneColumn.verdict && tuneColumn.verdict.level === "spills" ? root.destructiveColor : root.cliTightColor)
+                              text: root.cliTuneBusy ? "SAVING…" : "SAVE " + root.contextLabel(tuneColumn.tokens) + (tuneColumn.risky ? " ANYWAY…" : "")
+                              tooltipText: "Rebuilds the CLI's model in a few seconds (no download); NOVA's chat follows it"
+                              selected: !tuneColumn.risky; foreground: !tuneColumn.risky ? root.foreground : (tuneColumn.verdict && tuneColumn.verdict.level === "spills" ? root.destructiveColor : root.cliTightColor)
                               accent: root.accent; bordered: true; focusable: true
                               enabled: !root.cliTuneBusy && !!root.cliTuneState && tuneColumn.tokens !== root.cliTuneState.context
                               opacity: enabled ? 1 : 0.5
                               onClicked: root.saveCliTune(false)
                             }
-                            CompactModelButton { objectName: "codingCliRecommendedButton"; text: "BACK TO RECOMMENDED"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: true; onClicked: root.cliTuneRecommended() }
-                            CompactModelButton { text: "CANCEL"; foreground: root.muted; accent: root.accent; bordered: false; focusable: true; onClicked: root.cliTuneModel = "" }
+                            CompactModelButton { objectName: "codingCliRecommendedButton"; text: "BACK TO " + root.contextLabel(tuneMarks.recommended); foreground: root.cardSoftText; accent: root.accent; bordered: false; focusable: true; onClicked: root.cliTuneRecommended() }
+                            CompactModelButton { text: "CANCEL"; foreground: root.cardSoftText; accent: root.accent; bordered: false; focusable: true; onClicked: root.cliTuneModel = "" }
                           }
-                          Text { textFormat: Text.PlainText; visible: !!root.cliTuneState; width: parent.width; wrapMode: Text.Wrap
-                                 text: "Saving rebuilds " + (root.cliTuneState ? root.cliTuneState.build : "") + " in a few seconds (no download). An open CLI uses it from its next message; NOVA's chat follows, so both share one copy in memory."
-                                 color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 1 }
                         }
                       }
                       Text {
@@ -6002,8 +6345,11 @@ Ui.Panel {
                 visible: root.onlineCliItems.length > 0
                 spacing: Style.spacing.xs
                 Rectangle { width: parent.width; height: 1; color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.16) }
-                Text { textFormat: Text.PlainText; objectName: "onlineCliTitle"; width: parent.width; wrapMode: Text.Wrap; text: "ONLINE CLIS · " + root.onlineCliItems.length; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.4 }
-                Text { textFormat: Text.PlainText; width: parent.width; wrapMode: Text.Wrap; text: "Coding assistants that run online with your own account. NOVA stores no keys and does not change its chat model."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                Row {
+                  width: parent.width; spacing: Style.spacing.sm
+                  Text { textFormat: Text.PlainText; objectName: "onlineCliTitle"; text: "ONLINE CLIS · " + root.onlineCliItems.length; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.4 }
+                  Text { textFormat: Text.PlainText; width: parent.width - x; elide: Text.ElideRight; text: "your own account · NOVA keeps no keys"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                }
                 Repeater { model: root.onlineCliItems; id: onlineCliRepeater; objectName: "onlineCliRepeater"
                   Column {
                     id: onlineCliRow
@@ -6011,9 +6357,14 @@ Ui.Panel {
                     readonly property var profile: root.cliProfileFor(modelData)
                     width: parent.width
                     spacing: 2
-                    Text { width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText; text: onlineCliRow.profile ? onlineCliRow.profile.label : ""; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; font.letterSpacing: 0.4 }
-                    Text { width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText; text: onlineCliRow.profile ? "PROJECT  " + onlineCliRow.profile.project_label : ""; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 1 }
+                    // MODELS v2: one line per online CLI: name, project, OPEN CLI.
+                    Item {
+                      width: parent.width; height: Math.max(onlineCliName.implicitHeight, onlineCliOpenButton.height)
+                      Text { id: onlineCliName; anchors.verticalCenter: parent.verticalCenter; width: Style.space(120); elide: Text.ElideRight; textFormat: Text.PlainText; text: onlineCliRow.profile ? onlineCliRow.profile.label : ""; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; font.letterSpacing: 0.4 }
+                      Text { anchors.left: onlineCliName.right; anchors.right: onlineCliOpenButton.left; anchors.rightMargin: Style.spacing.sm; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight; textFormat: Text.PlainText; text: onlineCliRow.profile ? onlineCliRow.profile.project_label : ""; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                     CompactModelButton {
+                      id: onlineCliOpenButton
+                      anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
                       objectName: "onlineCliOpenButton"
                       readonly property bool launchable: root.cliCanLaunch(modelData)
                       text: "OPEN CLI"
@@ -6025,6 +6376,7 @@ Ui.Panel {
                       Accessible.name: "Open CLI " + (onlineCliRow.profile ? onlineCliRow.profile.label : "")
                       Accessible.description: tooltipText
                       onClicked: launchable ? root.beginCliLaunch(modelData) : root.explainCliUnavailable(modelData)
+                    }
                     }
                     Rectangle {
                       id: onlineCliConfirmCard
@@ -6086,55 +6438,55 @@ Ui.Panel {
                 width: parent.width
                 visible: root.catalogDownloadsExpanded
                 spacing: Style.spacing.xs
-                // UX Phase 2 step 2c (mock): ADD A MODEL, then DOWNLOADS as cards.
-                // Run 6 (Konstantin): "a tiiiiny bit more" room between the sections.
+                // MODELS v2 (mock previews/models-v2): SUGGESTED / FITS / ALL, two lines per model,
+                // the long facts behind DETAILS, and any Ollama model at the end.
                 Item { width: 1; height: Style.spacing.md }
-                Row {
-                  spacing: Style.spacing.sm
-                  Text { textFormat: Text.PlainText; objectName: "addModelTitle"; text: "ADD A MODEL"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.4 }
-                  Text { textFormat: Text.PlainText; text: "any Ollama name; nothing downloads until you approve"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                Item {
+                  width: parent.width; height: Math.max(downloadsTitle.implicitHeight, hideDownloadsButton.height)
+                  Text { textFormat: Text.PlainText; id: downloadsTitle; objectName: "downloadsTitle"; anchors.verticalCenter: parent.verticalCenter; text: "DOWNLOADS"; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.4 }
+                  Text { textFormat: Text.PlainText; anchors.left: downloadsTitle.right; anchors.leftMargin: Style.spacing.sm; anchors.right: hideDownloadsButton.left; anchors.rightMargin: Style.spacing.sm; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight
+                         text: "nothing downloads until you approve"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                  CompactModelButton { id: hideDownloadsButton; objectName: "hideDownloadsButton"; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; text: "HIDE"; tooltipText: "Hide the download catalog"; foreground: root.cardSoftText; accent: root.accent; bordered: false; focusable: true; onClicked: root.toggleCatalogDownloads() }
                 }
-                Row {
-                  objectName: "addModelRow"
-                  width: parent.width
-                  spacing: Style.spacing.xs
-                  GuardedTextField {
-                    id: addModelInput
-                    objectName: "addModelInput"
-                    width: parent.width - addModelButton.implicitWidth - parent.spacing
-                    placeholderText: "Add a model: name or ollama.com link, e.g. gemma4:12b"
-                    enabled: !root.addModelBusy
-                    foreground: root.foreground
-                    accent: root.accent
-                    onAccepted: root.addRequestedModel(text)
-                    onPasteRefused: function(reason) { root.addModelFailed = true; root.addModelStatus = reason }
+                Item {
+                  width: parent.width; height: Math.max(catalogFilters.height, catalogDetailsToggle.height)
+                  Row {
+                    id: catalogFilters
+                    objectName: "catalogFilters"
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Style.spacing.xxs
+                    Repeater {
+                      model: root.catalogFilterChoices()
+                      CompactModelButton {
+                        required property var modelData
+                        objectName: "catalogFilter"
+                        readonly property string filterId: modelData.id
+                        text: modelData.label + " · " + modelData.count
+                        tooltipText: modelData.tip
+                        selected: root.effectiveCatalogFilter === modelData.id
+                        foreground: root.foreground; accent: root.accent; bordered: true; focusable: true
+                        Accessible.name: "Show " + modelData.label.toLowerCase() + " models"
+                        onClicked: root.catalogFilter = modelData.id
+                      }
+                    }
                   }
-                  CompactModelButton { id: addModelButton; objectName: "addModelButton"; anchors.verticalCenter: parent.verticalCenter; text: root.addModelBusy ? "LOOKING UP…" : "ADD"; tooltipText: "Look up this model in Ollama's library; nothing downloads"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: true; enabled: !root.addModelBusy && addModelInput.text.trim() !== ""; onClicked: root.addRequestedModel(addModelInput.text) }
-                }
-                Text { textFormat: Text.PlainText; objectName: "addModelStatusText"; visible: root.addModelStatus !== ""; width: parent.width; wrapMode: Text.Wrap; text: root.addModelStatus; color: root.addModelFailed ? Commons.Color.urgent : root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
-                Item { width: 1; height: Style.spacing.md }
-                Row {
-                  spacing: Style.spacing.sm
-                  Text { textFormat: Text.PlainText; objectName: "downloadsTitle"; text: "DOWNLOADS · " + root.orderedCatalogModels.filter(root.catalogRowVisible).length; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.4 }
-                  Text { textFormat: Text.PlainText; text: "suggested and fitting models first"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
-                }
-                Rectangle { objectName: "catalogDetailsToggle"; width: selectorDetails.implicitWidth + Style.spacing.md; height: selectorDetails.implicitHeight + Style.spacing.xs; color: "transparent"; border.width: 1; border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.22)
-                  Text { textFormat: Text.PlainText; id: selectorDetails; anchors.centerIn: parent; text: root.selectorDetailsExpanded ? "[ HIDE CATALOG DETAILS ]" : "[ CATALOG DETAILS ]"; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.7 }
-                  MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.selectorDetailsExpanded = !root.selectorDetailsExpanded }
+                  CompactModelButton { id: catalogDetailsToggle; objectName: "catalogDetailsToggle"; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                                       text: root.selectorDetailsExpanded ? "CATALOG ‹" : "CATALOG ›"; tooltipText: "Where the list comes from and what NOVA knows about this computer"
+                                       foreground: root.cardSoftText; accent: root.accent; bordered: false; focusable: true; onClicked: root.selectorDetailsExpanded = !root.selectorDetailsExpanded }
                 }
                 Column { visible: root.selectorDetailsExpanded; width: parent.width; spacing: Style.spacing.xxs
                   Text { textFormat: Text.PlainText; width: parent.width; text: root.catalogSummary; color: root.catalogSummary.indexOf("UNAVAILABLE") >= 0 || root.catalogSummary.indexOf("MISMATCH") >= 0 ? Commons.Color.urgent : root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.5; wrapMode: Text.Wrap }
                   Text { textFormat: Text.PlainText; width: parent.width; text: root.hardwareSummary; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
                   Text { textFormat: Text.PlainText; width: parent.width; text: root.recommendationSummary === "RECOMMEND // INSUFFICIENT EVIDENCE" ? "Recommendations need more evidence before NOVA can suggest a model." : root.recommendationSummary; color: root.recommendationSummary.indexOf("UNAVAILABLE") >= 0 ? root.muted : root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
                 }
-                Text { textFormat: Text.PlainText; objectName: "suggestionSummary"; visible: root.suggestionSummary !== ""; width: parent.width; text: root.suggestionSummary; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.letterSpacing: 0.6; wrapMode: Text.Wrap }
+                Text { textFormat: Text.PlainText; objectName: "catalogFilterHint"; width: parent.width; wrapMode: Text.Wrap; text: root.catalogFilterHint(); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
                 Text { textFormat: Text.PlainText; objectName: "budgetNote"; visible: root.budgetNote !== ""; width: parent.width; text: root.budgetNote; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
               Repeater { model: root.orderedCatalogModels; id: catalogModelRepeater; objectName: "catalogModelRepeater"
                 Item {
                   required property var modelData
                   width: parent.width
                   visible: root.catalogRowVisible(modelData)
-                  height: root.catalogRowVisible(modelData) ? modelEntry.implicitHeight + 2 * Style.spacing.sm + Style.spacing.xs : 0
+                  height: root.catalogRowVisible(modelData) ? modelEntry.implicitHeight + 2 * Style.spacing.xs + Style.spacing.xs : 0
                   // A card like the installed models (the bottom spacing separates the cards).
                   Rectangle {
                     width: parent.width; height: parent.height - Style.spacing.xs
@@ -6145,42 +6497,93 @@ Ui.Panel {
                   }
                   Column {
                     id: modelEntry
-                    x: Style.spacing.sm; y: Style.spacing.sm
+                    x: Style.spacing.sm; y: Style.spacing.xs
                     width: parent.width - 2 * Style.spacing.sm
                     spacing: 3
+                    // Two lines: name (and tags) over the facts; size, DETAILS and the action on the right.
                     Item {
                       width: parent.width
-                      height: Math.max(catalogTitleFlow.height, catalogSize.implicitHeight)
-                      Flow {
-                        id: catalogTitleFlow
-                        width: parent.width - catalogSize.implicitWidth - Style.spacing.sm
-                        spacing: Style.spacing.sm
-                        Text { textFormat: Text.PlainText; objectName: "catalogRowTitle"; text: root.friendlyModelName(modelData.catalog_id); color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; font.bold: true; wrapMode: Text.Wrap; width: Math.min(implicitWidth, catalogTitleFlow.width) }
-                        Repeater {
-                          model: [root.isSwitchDestination(modelData) ? "SWITCHING…" : "", root.isExplicitlySelected(modelData) ? "IN USE" : "", root.catalogIsNew(modelData.catalog_id) ? "NEW" : "",
-                                  root.suggestionFor(modelData.catalog_id) ? "SUGGESTED" : "", modelData.user_requested === true ? "YOU ADDED" : ""].filter(function(t) { return t !== "" })
-                          delegate: Rectangle {
-                            required property string modelData
-                            objectName: "catalogTag"
-                            readonly property bool filled: modelData === "NEW"
-                            width: catalogTagText.implicitWidth + Style.space(8); height: catalogTagText.implicitHeight + Style.space(2)
-                            y: Style.space(2)
-                            color: filled ? root.accent : "transparent"
-                            border.width: 1; border.color: filled || modelData === "IN USE" ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.35)
-                            Text { textFormat: Text.PlainText; id: catalogTagText; anchors.centerIn: parent; text: parent.modelData; color: parent.filled ? Commons.Color.background : (parent.modelData === "IN USE" ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.7)); font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2; font.bold: true; font.letterSpacing: 1 }
+                      height: Math.max(catalogWho.height, catalogEnd.height)
+                      Column {
+                        id: catalogWho
+                        anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
+                        width: parent.width - catalogEnd.width - Style.spacing.sm
+                        spacing: 3
+                        Flow {
+                          id: catalogTitleFlow
+                          width: parent.width
+                          spacing: Style.spacing.sm
+                          Text { textFormat: Text.PlainText; objectName: "catalogRowTitle"; text: root.friendlyModelName(modelData.catalog_id); color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; font.bold: true; wrapMode: Text.Wrap; width: Math.min(implicitWidth, catalogTitleFlow.width) }
+                          Repeater {
+                            model: [root.isSwitchDestination(modelData) ? "SWITCHING…" : "", root.isExplicitlySelected(modelData) ? "IN USE" : "", root.catalogIsNew(modelData.catalog_id) ? "NEW" : "",
+                                    root.suggestionFor(modelData.catalog_id) && root.effectiveCatalogFilter !== "suggested" ? "SUGGESTED" : "", modelData.user_requested === true ? "YOU ADDED" : ""].filter(function(t) { return t !== "" })
+                            delegate: Rectangle {
+                              required property string modelData
+                              objectName: "catalogTag"
+                              readonly property bool filled: modelData === "NEW"
+                              width: catalogTagText.implicitWidth + Style.space(8); height: catalogTagText.implicitHeight + Style.space(2)
+                              y: Style.space(2)
+                              color: filled ? root.accent : "transparent"
+                              border.width: 1; border.color: filled || modelData === "IN USE" || modelData === "SUGGESTED" ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.35)
+                              Text { textFormat: Text.PlainText; id: catalogTagText; anchors.centerIn: parent; text: parent.modelData; color: parent.filled ? Commons.Color.background : (parent.modelData === "IN USE" || parent.modelData === "SUGGESTED" ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.7)); font.family: root.fontFamily; font.pixelSize: Style.font.caption - 2; font.bold: true; font.letterSpacing: 1 }
+                            }
                           }
                         }
+                        Row {
+                          width: parent.width; spacing: Style.spacing.xs
+                          FactWord { id: catalogFitWord; objectName: "catalogFitWord"; anchors.verticalCenter: parent.verticalCenter; text: root.fitWord(root.rowFit(modelData)); tone: root.fitTone(root.rowFit(modelData)) }
+                          Text { textFormat: Text.PlainText; objectName: "catalogFacts"; anchors.verticalCenter: parent.verticalCenter; width: parent.width - (catalogFitWord.visible ? catalogFitWord.width + parent.spacing : 0); elide: Text.ElideRight
+                                 text: root.catalogFacts(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                        }
                       }
-                      Text { textFormat: Text.PlainText; id: catalogSize; anchors.right: parent.right; y: Style.space(1); text: root.catalogSizeLabel(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                      // Right to left: the action at the edge, then DETAILS, then the size.
+                      Row {
+                        id: catalogEnd
+                        objectName: "catalogActions"
+                        anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                        layoutDirection: Qt.RightToLeft
+                        spacing: Style.spacing.xxs
+                        CompactModelButton {
+                          objectName: "installModelButton"
+                          visible: root.acquisitionState(modelData) === "AVAILABLE TO INSTALL"
+                          text: "INSTALL"
+                          tooltipText: "Create a new installation proposal for " + root.catalogRuntimeId(modelData) + "; nothing downloads until you approve"
+                          foreground: root.foreground; accent: root.accent; bordered: true; focusable: true
+                          selected: true  // the card's one primary action
+                          enabled: !root.modelsUnavailable && !root.chatBusy && !root.modelTransitionActive && root.pendingApproval === null && root.trackedAcquisitionId === ""
+                          Accessible.name: "Install " + root.catalogRuntimeId(modelData)
+                          onClicked: root.proposeAcquisition(modelData)
+                        }
+                        CompactModelButton {
+                          objectName: "activateModelButton"
+                          visible: root.catalogIsInstalled(modelData) && !root.isExplicitlySelected(modelData)
+                          text: "LOAD AND USE " + root.catalogDisplayName(modelData.catalog_id).toUpperCase()
+                          tooltipText: "Load and verify " + root.catalogRuntimeId(modelData) + ", then make it the selected model"
+                          foreground: root.foreground; accent: root.accent; bordered: true; focusable: true
+                          enabled: !root.modelsUnavailable && !root.modelTransitionActive && !root.chatBusy && root.pendingApproval === null && root.trackedAcquisitionId === ""
+                          Accessible.name: text
+                          onClicked: root.selectModel(root.catalogRuntimeId(modelData), true)
+                        }
+                        CompactModelButton {
+                          id: modelDetailsButton
+                          objectName: "modelDetailsButton"
+                          text: root.modelDetailsOpen(modelData.catalog_id) ? "LESS" : "DETAILS"
+                          tooltipText: root.modelDetailsOpen(modelData.catalog_id) ? "Hide this model's details" : "Who suggests it, how sure NOVA is, and the catalog's facts"
+                          foreground: enabled ? root.cardSoftText : root.muted
+                          accent: root.accent; bordered: false; focusable: true
+                          opacity: enabled ? 1 : 0.46
+                          Accessible.name: (root.modelDetailsOpen(modelData.catalog_id) ? "Hide details of " : "Details of ") + root.friendlyModelName(modelData.catalog_id)
+                          onClicked: root.toggleModelDetails(modelData.catalog_id)
+                        }
+                        Text { textFormat: Text.PlainText; id: catalogSize; anchors.verticalCenter: parent.verticalCenter; rightPadding: Style.spacing.xs; text: root.catalogSizeLabel(modelData); color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                      }
                     }
-                    Text { objectName: "catalogSuggestion"; visible: root.suggestionLine(modelData.catalog_id) !== ""; width: parent.width; text: root.suggestionLine(modelData.catalog_id); textFormat: Text.PlainText; color: root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
-                    Text { textFormat: Text.PlainText; objectName: "catalogFitText"; width: parent.width; text: root.rowFitSummary(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
-                    Text { textFormat: Text.PlainText; width: parent.width; text: root.rowContextSummary(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
                     Rectangle {
                       id: acquisitionStatusBadge
                       objectName: "acquisitionStatusBadge"
                       readonly property bool warning: root.acquisitionState(modelData) === "FAILED" || root.acquisitionState(modelData) === "RECOVERY_REQUIRED"
-                      visible: root.acquisitionPlainLabel(modelData) !== ""
+                      // Only when there is something to say ("Available to install." is what INSTALL says).
+                      visible: root.acquisitionPlainLabel(modelData) !== "" && root.acquisitionState(modelData) !== "AVAILABLE TO INSTALL"
                       width: parent.width
                       height: visible ? acquisitionStatusBadgeText.implicitHeight + Style.spacing.sm : 0
                       color: Qt.rgba((warning ? Commons.Color.urgent : root.foreground).r, (warning ? Commons.Color.urgent : root.foreground).g, (warning ? Commons.Color.urgent : root.foreground).b, 0.045)
@@ -6198,43 +6601,16 @@ Ui.Panel {
                       onClicked: root.reviewRecovery(modelData)
                     }
                     AcquisitionProgress { modelData: modelEntry.parent.modelData }
-                    Flow {
-                      objectName: "catalogActions"
-                      width: parent.width
-                      spacing: Style.spacing.xxs
-                      CompactModelButton {
-                        objectName: "installModelButton"
-                        visible: root.acquisitionState(modelData) === "AVAILABLE TO INSTALL"
-                        text: "INSTALL " + root.catalogRuntimeId(modelData).toUpperCase()
-                        tooltipText: "Create a new installation proposal for " + root.catalogRuntimeId(modelData)
-                        foreground: root.foreground; accent: root.accent; bordered: true; focusable: true
-                        selected: true  // the card's one primary action
-                        enabled: !root.modelsUnavailable && !root.chatBusy && !root.modelTransitionActive && root.pendingApproval === null && root.trackedAcquisitionId === ""
-                        Accessible.name: text
-                        onClicked: root.proposeAcquisition(modelData)
-                      }
-                      CompactModelButton {
-                        objectName: "activateModelButton"
-                        visible: root.catalogIsInstalled(modelData) && !root.isExplicitlySelected(modelData)
-                        text: "LOAD AND USE " + root.catalogDisplayName(modelData.catalog_id).toUpperCase()
-                        tooltipText: "Load and verify " + root.catalogRuntimeId(modelData) + ", then make it the selected model"
-                        foreground: root.foreground; accent: root.accent; bordered: true; focusable: true
-                        enabled: !root.modelsUnavailable && !root.modelTransitionActive && !root.chatBusy && root.pendingApproval === null && root.trackedAcquisitionId === ""
-                        Accessible.name: text
-                        onClicked: root.selectModel(root.catalogRuntimeId(modelData), true)
-                      }
-                      CompactModelButton {
-                        id: modelDetailsButton
-                        objectName: "modelDetailsButton"
-                        text: root.modelDetailsOpen(modelData.catalog_id) ? "HIDE MODEL DETAILS" : "MODEL DETAILS"
-                        tooltipText: text
-                        foreground: enabled ? root.foreground : root.muted
-                        accent: root.accent; bordered: false; focusable: true
-                        background: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.07)
-                        opacity: enabled ? 1 : 0.46
-                        Accessible.name: text
-                        onClicked: root.toggleModelDetails(modelData.catalog_id)
-                      }
+                    Column { visible: root.modelDetailsOpen(modelData.catalog_id); width: parent.width; spacing: Style.spacing.xxs; topPadding: Style.space(2)
+                      Rectangle { width: parent.width; height: 1; color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.1) }
+                      Text { objectName: "catalogSuggestion"; visible: root.suggestionLine(modelData.catalog_id) !== ""; width: parent.width; text: root.suggestionLine(modelData.catalog_id); textFormat: Text.PlainText; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                      Text { textFormat: Text.PlainText; objectName: "catalogFitText"; width: parent.width; text: root.rowFitSummary(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                      Text { textFormat: Text.PlainText; width: parent.width; text: root.rowContextSummary(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                      Text { textFormat: Text.PlainText; width: parent.width; text: "Working context is how much conversation and reference material the model can work with at once."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                      Text { textFormat: Text.PlainText; width: parent.width; text: root.catalogPropertiesSummary(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                      Text { textFormat: Text.PlainText; width: parent.width; text: root.catalogFitConfidenceSummary(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                      Text { textFormat: Text.PlainText; visible: root.acquisitionDetail(modelData) !== ""; width: parent.width; text: root.acquisitionDetail(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
+                      Text { visible: root.acquisitionHistory(modelData) !== ""; width: parent.width; text: root.acquisitionHistory(modelData); textFormat: Text.PlainText; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
                       CompactModelButton {
                         objectName: "removeRequestedButton"
                         visible: modelData.user_requested === true
@@ -6248,24 +6624,31 @@ Ui.Panel {
                         onClicked: root.removeRequestedModel(modelData)
                       }
                     }
-                    Column { visible: root.modelDetailsOpen(modelData.catalog_id); width: parent.width; spacing: Style.spacing.xxs
-                      Text { textFormat: Text.PlainText; width: parent.width; text: "Working context is how much conversation and reference material the model can work with at once."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
-                      Text { textFormat: Text.PlainText; width: parent.width; text: root.catalogPropertiesSummary(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
-                      Text { textFormat: Text.PlainText; width: parent.width; text: root.catalogFitConfidenceSummary(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
-                      Text { textFormat: Text.PlainText; visible: root.acquisitionDetail(modelData) !== ""; width: parent.width; text: root.acquisitionDetail(modelData); color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
-                      Text { visible: root.acquisitionHistory(modelData) !== ""; width: parent.width; text: root.acquisitionHistory(modelData); textFormat: Text.PlainText; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption; wrapMode: Text.Wrap }
-                    }
                   }
                 }
               }
-                CompactModelButton {
-                  objectName: "tooBigToggle"
-                  visible: root.tooBigModelCount > 0
-                  text: (root.showTooBigModels ? "HIDE " : "SHOW ") + root.tooBigModelCount + (root.tooBigModelCount === 1 ? " MODEL" : " MODELS") + " TOO BIG FOR THIS COMPUTER"
-                  foreground: root.foreground; accent: root.accent; bordered: true; focusable: visible
-                  Accessible.name: text
-                  onClicked: root.showTooBigModels = !root.showTooBigModels
+                // Not in the list: any Ollama model, looked up first (nothing downloads until approved).
+                Item { width: 1; height: Style.spacing.xs }
+                Rectangle { width: parent.width; height: 1; color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12) }
+                Item {
+                  objectName: "addModelRow"
+                  width: parent.width; height: Math.max(addModelInput.height, addModelButton.height)
+                  Text { textFormat: Text.PlainText; id: addModelTitle; objectName: "addModelTitle"; anchors.verticalCenter: parent.verticalCenter; text: "NOT LISTED?"; color: root.cardSoftText; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 1; font.letterSpacing: 1.2 }
+                  GuardedTextField {
+                    id: addModelInput
+                    objectName: "addModelInput"
+                    anchors.left: addModelTitle.right; anchors.leftMargin: Style.spacing.sm; anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width - addModelTitle.width - addModelButton.implicitWidth - 2 * Style.spacing.sm
+                    placeholderText: "any Ollama name or ollama.com link, e.g. gemma4:12b"
+                    enabled: !root.addModelBusy
+                    foreground: root.foreground
+                    accent: root.accent
+                    onAccepted: root.addRequestedModel(text)
+                    onPasteRefused: function(reason) { root.addModelFailed = true; root.addModelStatus = reason }
+                  }
+                  CompactModelButton { id: addModelButton; objectName: "addModelButton"; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; text: root.addModelBusy ? "LOOKING UP…" : "ADD"; tooltipText: "Look up this model in Ollama's library; nothing downloads"; foreground: root.foreground; accent: root.accent; bordered: true; focusable: true; enabled: !root.addModelBusy && addModelInput.text.trim() !== ""; onClicked: root.addRequestedModel(addModelInput.text) }
                 }
+                Text { textFormat: Text.PlainText; objectName: "addModelStatusText"; visible: root.addModelStatus !== ""; width: parent.width; wrapMode: Text.Wrap; text: root.addModelStatus; color: root.addModelFailed ? Commons.Color.urgent : root.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
               }
             }
           }
@@ -6289,22 +6672,6 @@ Ui.Panel {
               color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.72)
             }
           }
-            CompactModelButton {
-              id: browseModelDownloadsButton
-              objectName: "browseModelDownloadsButton"
-              anchors.horizontalCenter: parent.horizontalCenter
-              anchors.bottom: parent.bottom
-              anchors.bottomMargin: Style.spacing.xs
-              text: root.catalogDownloadsExpanded ? "HIDE MODEL DOWNLOADS"
-                : (root.catalogAttention() ? root.catalogAttention().label
-                : "BROWSE MODEL DOWNLOADS" + (root.newCatalogIds.length ? " · " + root.newCatalogIds.length + " NEW" : ""))
-              tooltipText: root.catalogDownloadsExpanded ? "Hide the download catalog"
-                : (root.catalogAttention() ? root.catalogAttention().label + " for " + root.catalogAttention().target
-                : "Show the download catalog, installation progress and recovery actions")
-              foreground: root.foreground; accent: root.accent; bordered: true; focusable: true
-              Accessible.name: text
-              onClicked: root.toggleCatalogDownloads()
-            }
         }
 
         // UX Phase 2 step 2b (mock): what's in GPU memory and the versions scroll below the
@@ -6389,6 +6756,17 @@ Ui.Panel {
                   + "\n" + root.graphicsLine()
                   + (root.modelListLine() !== "" ? "\n" + root.modelListLine() : "")
                 color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.7); font.family: root.fontFamily; font.pixelSize: Style.font.caption
+              }
+              // REMOVE-01: removing NOVA lives at the very bottom of MACHINE (and in the bar icon's menu).
+              Item { width: 1; height: Style.spacing.sm }
+              Rectangle { width: parent.width; height: 1; color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12) }
+              Item {
+                width: parent.width; height: Math.max(removeNovaButton.height, removeNovaHint.implicitHeight)
+                CompactModelButton { id: removeNovaButton; objectName: "removeNovaButton"; anchors.verticalCenter: parent.verticalCenter; text: "REMOVE NOVA…"
+                                     tooltipText: "Shows what goes and asks first"; foreground: root.destructiveColor; accent: root.destructiveColor; bordered: true; focusable: true
+                                     onClicked: root.openRemoveNova() }
+                Text { id: removeNovaHint; textFormat: Text.PlainText; anchors.left: removeNovaButton.right; anchors.leftMargin: Style.spacing.sm; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; wrapMode: Text.Wrap
+                       text: "Removes NOVA, and if you want its models and Ollama too. It shows what goes and asks first."; color: root.muted; font.family: root.fontFamily; font.pixelSize: Style.font.caption - 1 }
               }
             }
         }

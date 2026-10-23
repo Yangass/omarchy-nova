@@ -78,7 +78,7 @@ QML_CHECK = r'''
         capture("view-models")
         novaPanel.catalogDownloadsExpanded = true; wait(150)
         var list = item("modelList"); list.contentY = Math.max(0, item("downloadsTitle").mapToItem(item("modelColumn"), 0, 0).y - 140); wait(80)
-        check(shown("downloadsTitle") && item("downloadsTitle").text.indexOf("DOWNLOADS · ") === 0, "downloads header")
+        check(shown("downloadsTitle") && item("downloadsTitle").text === "DOWNLOADS" && shown("catalogFilters"), "downloads header")
         capture("view-downloads")
         list.contentY = 0; novaPanel.catalogDownloadsExpanded = false
       })
