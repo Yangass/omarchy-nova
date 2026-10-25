@@ -127,10 +127,13 @@ QML_CHECK = r'''
         novaPanel.seenCatalogIds = ids; wait(80)
         check(item("viewTab_models").badge === "", "badge stayed: " + item("viewTab_models").badge)
       })
-      test("MACHINE gets a warning dot when the GPU runs hot or memory or disk is nearly full", function() {
+      test("MACHINE gets a warning dot when the GPU reaches its limit or memory or disk is nearly full", function() {
         check(!item("viewTab_machine").warning, "warning without cause")
+        // 88 of 90 °C is warm (normal under full load), not a warning; 90 is its limit.
         previewHost.gpuTemperature = 88; wait(80)
-        check(item("viewTab_machine").warning, "hot GPU not flagged")
+        check(!item("viewTab_machine").warning, "a warm GPU flagged")
+        previewHost.gpuTemperature = 90; wait(80)
+        check(item("viewTab_machine").warning, "GPU at its limit not flagged")
         previewHost.gpuTemperature = 60; previewHost.disk = 97; wait(80)
         check(item("viewTab_machine").warning, "full disk not flagged")
         previewHost.disk = 50; wait(80)

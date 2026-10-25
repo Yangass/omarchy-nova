@@ -35,6 +35,8 @@ Ui.BarWidget {
   property real vramUsed: -1
   property real vramTotal: -1
   property real gpuTemperature: -1
+  // The card's own maximum operating temperature (it slows down just past it), when known.
+  property real gpuTemperatureLimit: -1
   property real gpuPower: -1
   property real disk: -1
   property real diskUsed: -1
@@ -42,6 +44,11 @@ Ui.BarWidget {
   property string diskMount: "/"
   property real systemTemperature: -1
   property string temperatureLabel: "Thermals"
+  // The processor's sensor and the temperature it slows itself down at (its own, or its
+  // maker's: AMD Ryzen 95 °C, Intel 100 °C).
+  property real cpuTemperature: -1
+  property real cpuTemperatureLimit: -1
+  property string cpuTemperatureSource: ""
   property string runtimeState: "idle"
   property string currentTool: ""
   property string activeProvider: ""
@@ -79,11 +86,13 @@ Ui.BarWidget {
     gpuName = "GPU unavailable"
     gpuDriver = ""
     netDown = netUp = -1
-    gpu = vramUsed = vramTotal = gpuTemperature = gpuPower = -1
+    gpu = vramUsed = vramTotal = gpuTemperature = gpuTemperatureLimit = gpuPower = -1
     disk = diskUsed = diskTotal = -1
     diskMount = "/"
     systemTemperature = -1
     temperatureLabel = "Thermals"
+    cpuTemperature = cpuTemperatureLimit = -1
+    cpuTemperatureSource = ""
   }
   // Raw values (bytes/s); the panel scales them to the recent peak.
   function appendRaw(history, value) {
@@ -158,6 +167,7 @@ Ui.BarWidget {
       vramUsed = number(device.memory_used_mib) / 1024
       vramTotal = number(device.memory_total_mib) / 1024
       gpuTemperature = number(device.temperature_c)
+      gpuTemperatureLimit = number(device.temperature_limit_c)
       gpuPower = number(device.power_w)
       gpuSampledAt = Date.now()
       // Fast samples feed the core wave only; history keeps its refresh spacing.
@@ -229,7 +239,12 @@ Ui.BarWidget {
       request("/telemetry/temperatures", function(status, text) {
         if (status !== 200) return
         try {
-          var items = JSON.parse(text).temperatures || []
+          var data = JSON.parse(text)
+          var cpu = data.cpu || null
+          root.cpuTemperature = cpu ? root.number(cpu.temperature_c) : -1
+          root.cpuTemperatureLimit = cpu ? root.number(cpu.limit_c) : -1
+          root.cpuTemperatureSource = cpu && typeof cpu.limit_source === "string" ? cpu.limit_source : ""
+          var items = data.temperatures || []
           if (!items.length) return
           var hottest = items[0]
           for (var index = 1; index < items.length; index++)

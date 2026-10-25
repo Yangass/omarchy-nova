@@ -60,6 +60,10 @@ Ui.Panel {
   readonly property real vramUsed: hostWidget ? hostWidget.vramUsed : -1
   readonly property real vramTotal: hostWidget ? hostWidget.vramTotal : -1
   readonly property real gpuTemperature: hostWidget ? hostWidget.gpuTemperature : -1
+  readonly property real gpuTemperatureLimit: hostWidget ? hostWidget.gpuTemperatureLimit : -1
+  readonly property real cpuTemperature: hostWidget ? hostWidget.cpuTemperature : -1
+  readonly property real cpuTemperatureLimit: hostWidget ? hostWidget.cpuTemperatureLimit : -1
+  readonly property string cpuTemperatureSource: hostWidget ? hostWidget.cpuTemperatureSource : ""
   readonly property real gpuPower: hostWidget ? hostWidget.gpuPower : -1
   readonly property real disk: hostWidget ? hostWidget.disk : -1
   readonly property real diskUsed: hostWidget ? hostWidget.diskUsed : -1
@@ -151,8 +155,9 @@ Ui.Panel {
   readonly property real coreBandHeight: Math.max(Style.space(64), Math.min(Style.space(140), layoutArea ? layoutArea.height * 0.18 : 0))
   readonly property real coreAspect: 3.6
   readonly property bool selectorVisible: shownView === "models"
-  // MACHINE tab dot: the GPU is hot, or memory or disk is nearly full.
-  readonly property bool machineWarning: (valid(gpuTemperature) && gpuTemperature >= 85) || ratio(memory) >= 0.95 || ratio(disk) >= 0.95
+  // MACHINE tab dot: the GPU or the processor is at the temperature it slows itself down at,
+  // or memory or disk is nearly full.
+  readonly property bool machineWarning: heatLevel(gpuTemperature, gpuLimit()) === 2 || heatLevel(cpuTemperature, cpuTemperatureLimit) === 2 || ratio(memory) >= 0.95 || ratio(disk) >= 0.95
   property string approvalFeedback: ""
   property var approvalRequestTimeoutCallback: null
   property var recoveryRequestTimeoutCallback: null
@@ -4098,6 +4103,36 @@ Ui.Panel {
     if (fraction >= 0.85) return Qt.rgba((accent.r + Commons.Color.urgent.r) / 2, (accent.g + Commons.Color.urgent.g) / 2, (accent.b + Commons.Color.urgent.b) / 2, 1)
     return accent
   }
+  // Temperatures (Konstantin 2026-10-25): coloured by how close a chip is to the temperature
+  // it slows itself down at, not by how full the bar is: 85 °C under full load is normal for
+  // many graphics cards. Calm until 10° from the limit, warm within it, hot at it, always
+  // with a word (some themes turn red into green).
+  function gpuLimit() { return gpuTemperatureLimit > 0 ? gpuTemperatureLimit : 90 }
+  function heatLevel(temperature, limit) {
+    if (!valid(temperature) || !(limit > 0)) return 0
+    var left = limit - temperature
+    return left <= 0 ? 2 : left < 10 ? 1 : 0
+  }
+  function heatTintFraction(temperature, limit) { var level = heatLevel(temperature, limit); return level === 2 ? 1 : level === 1 ? 0.9 : 0 }
+  // The bar from room temperature (25 °C) to the limit.
+  function heatFraction(temperature, limit) { return valid(temperature) && limit > 25 ? Math.max(0, Math.min(1, (temperature - 25) / (limit - 25))) : 0 }
+  function heatValue(temperature, limit) {
+    if (!valid(temperature)) return "—"
+    var level = heatLevel(temperature, limit)
+    return celsius(temperature) + (level === 2 ? " AT LIMIT" : level === 1 ? " WARM" : limit > 0 ? " / " + Math.round(limit) + "°" : "")
+  }
+  function gpuHeatTooltip() {
+    var limit = gpuLimit(), left = Math.round(limit - gpuTemperature)
+    var known = gpuTemperatureLimit > 0 ? "its maker's limit for this card" : "typical for graphics cards; this driver doesn't say"
+    return "Graphics card temperature " + celsius(gpuTemperature) + ". It slows itself down from " + Math.round(limit) + "°C (" + known + ")"
+      + (left > 0 ? ": " + left + "° to spare." : ".") + " Under full load 65–85°C is normal for most cards."
+  }
+  function cpuHeatTooltip() {
+    var left = Math.round(cpuTemperatureLimit - cpuTemperature)
+    return "Processor temperature " + celsius(cpuTemperature) + ". It slows itself down from " + Math.round(cpuTemperatureLimit) + "°C ("
+      + (cpuTemperatureSource || "its maker's limit") + ")" + (left > 0 ? ": " + left + "° to spare." : ".")
+      + " Under full load 70–90°C is normal; AMD Ryzen runs up to 95°C by design."
+  }
   function freeSpace(used, total) { return valid(used) && valid(total) && total >= used ? (total - used).toFixed(0) + " GiB free" : "—" }
   component TelemetryRow: Item {
     id: row
@@ -4107,13 +4142,16 @@ Ui.Panel {
     property real fraction: 0
     property var history: []
     property bool dots: false  // activity history instead of a fill bar
-    readonly property color tint: root.loadTint(fraction)
+    // What the colour follows: how full it is, unless the row says otherwise (temperatures
+    // follow how close they are to their limit).
+    property real tintFraction: fraction
+    readonly property color tint: root.loadTint(tintFraction)
     width: parent ? parent.width : implicitWidth
     implicitHeight: Math.max(rowLabel.implicitHeight, Style.space(14))
     Text { textFormat: Text.PlainText; id: rowLabel; width: Style.space(58); anchors.verticalCenter: parent.verticalCenter; text: row.label; color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.72); font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1.1 }
     // Fixed width, so a changing value never moves the graph (lesson of the brain bar).
     TextMetrics { id: valueMetrics; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; text: "00.0 / 00.0 GiB" }
-    Text { textFormat: Text.PlainText; id: rowValue; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; width: valueMetrics.width; horizontalAlignment: Text.AlignRight; text: row.value; color: row.fraction >= 0.85 ? row.tint : root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true }
+    Text { textFormat: Text.PlainText; id: rowValue; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; width: valueMetrics.width; horizontalAlignment: Text.AlignRight; text: row.value; color: row.tintFraction >= 0.85 ? row.tint : root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true }
     Item {
       id: graph
       anchors.left: rowLabel.right; anchors.right: rowValue.left; anchors.rightMargin: Style.spacing.sm
@@ -5218,7 +5256,9 @@ Ui.Panel {
             objectName: "telemetryFrame"
             readonly property color line: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.22)
             readonly property real inset: Style.spacing.sm
-            readonly property bool hasTemperature: root.valid(root.systemTemperature)
+            // The hottest sensor in the title, while neither the processor nor the graphics card
+            // has its own temperature row.
+            readonly property bool hasTemperature: root.valid(root.systemTemperature) && !root.valid(root.cpuTemperature) && !(root.gpuAvailable && root.valid(root.gpuTemperature))
             visible: root.shownView === "machine"
             width: parent.width
             implicitHeight: telemetryTitle.implicitHeight + telemetryGrid.implicitHeight + inset
@@ -5248,8 +5288,10 @@ Ui.Panel {
               width: telemetryFrame.width - 3 * telemetryFrame.inset
               spacing: Style.spacing.xs
               TelemetryRow { objectName: "telemetryGpu"; visible: root.gpuAvailable && root.valid(root.gpu); label: "GPU"; dots: true; value: root.percent(root.gpu); fraction: root.ratio(root.gpu); history: root.gpuHistory; tooltipText: root.gpuActivityTooltip() }
+              TelemetryRow { objectName: "telemetryGpuTemp"; visible: root.gpuAvailable && root.valid(root.gpuTemperature); label: "GPU TEMP"; value: root.heatValue(root.gpuTemperature, root.gpuLimit()); fraction: root.heatFraction(root.gpuTemperature, root.gpuLimit()); tintFraction: root.heatTintFraction(root.gpuTemperature, root.gpuLimit()); tooltipText: root.gpuHeatTooltip() }
               TelemetryRow { objectName: "telemetryGpuMemory"; visible: root.valid(root.vramUsed) && root.valid(root.vramTotal) && root.vramTotal > 0; label: "GPU MEM"; value: root.vramUsed.toFixed(1) + " / " + root.gib(root.vramTotal); fraction: visible ? root.vramUsed / root.vramTotal : 0; tooltipText: root.gpuMemoryTooltip() }
               TelemetryRow { objectName: "telemetryCpu"; visible: root.valid(root.cpu); label: "CPU"; dots: true; value: root.percent(root.cpu); fraction: root.ratio(root.cpu); history: root.cpuHistory; tooltipText: "How busy the processor is." }
+              TelemetryRow { objectName: "telemetryCpuTemp"; visible: root.valid(root.cpuTemperature) && root.cpuTemperatureLimit > 0; label: "CPU TEMP"; value: root.heatValue(root.cpuTemperature, root.cpuTemperatureLimit); fraction: root.heatFraction(root.cpuTemperature, root.cpuTemperatureLimit); tintFraction: root.heatTintFraction(root.cpuTemperature, root.cpuTemperatureLimit); tooltipText: root.cpuHeatTooltip() }
               TelemetryRow { objectName: "telemetryMemory"; visible: root.valid(root.memoryUsed) && root.valid(root.memoryTotal); label: "RAM"; value: root.memoryUsed.toFixed(1) + " / " + root.gib(root.memoryTotal); fraction: root.ratio(root.memory); tooltipText: "System memory in use. Without a graphics card, models run here." }
               TelemetryRow { objectName: "telemetryDisk"; visible: root.valid(root.disk); label: "DISK"; value: root.freeSpace(root.diskUsed, root.diskTotal); fraction: root.ratio(root.disk); tooltipText: "Disk " + root.diskMount + ": " + root.gib(root.diskUsed) + " of " + root.gib(root.diskTotal) + " used. Models need free space to download." }
               TelemetryRow { objectName: "telemetryNetDown"; visible: root.valid(root.netDown); label: "NET ↓"; dots: true; value: root.rateLabel(root.netDown); fraction: 0; history: root.netDownRaw.map(function(v) { return 100 * v / root.netPeak }); tooltipText: "Download speed of this computer's network adapters (Wi-Fi and wired)." }

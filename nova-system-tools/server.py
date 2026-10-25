@@ -100,25 +100,43 @@ def gpu_usage() -> dict[str, Any]:
     executable = shutil.which("nvidia-smi")
     if not executable:
         return {"timestamp": now(), "available": False, "reason": "nvidia-smi is not installed or not on PATH."}
-    command = [
-        executable,
-        "--query-gpu=name,driver_version,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw",
-        "--format=csv,noheader,nounits",
-    ]
-    try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=3, check=True)
-        rows = list(csv.reader(io.StringIO(result.stdout)))
-    except (OSError, subprocess.SubprocessError) as error:
+    fields = "name,driver_version,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw"
+    # temperature.gpu.tlimit: degrees left before the card's own maximum operating
+    # temperature (it slows down just past it). Older drivers don't know the field and
+    # refuse the whole query, so they are asked again without it.
+    rows: list[list[str]] = []
+    error: Exception | None = None
+    for query in (fields + ",temperature.gpu.tlimit", fields):
+        try:
+            result = subprocess.run([executable, f"--query-gpu={query}", "--format=csv,noheader,nounits"],
+                                    capture_output=True, text=True, timeout=3, check=True)
+            rows = list(csv.reader(io.StringIO(result.stdout)))
+            error = None
+            break
+        except (OSError, subprocess.SubprocessError) as failed:
+            error = failed
+    if error is not None:
         return {"timestamp": now(), "available": False, "reason": f"GPU query failed: {error}"}
     gpus = []
     for row in rows:
-        if len(row) == 7:
+        if len(row) in (7, 8):
+            temperature = row[5].strip()
             gpus.append({
                 "name": row[0].strip(), "driver_version": row[1].strip(), "usage_percent": row[2].strip(),
                 "memory_used_mib": row[3].strip(), "memory_total_mib": row[4].strip(),
-                "temperature_c": row[5].strip(), "power_w": row[6].strip(),
+                "temperature_c": temperature, "power_w": row[6].strip(),
+                "temperature_limit_c": gpu_temperature_limit(temperature, row[7].strip() if len(row) == 8 else ""),
             })
     return {"timestamp": now(), "available": bool(gpus), "gpus": gpus}
+
+
+def gpu_temperature_limit(temperature: str, headroom: str) -> str:
+    """The card's maximum operating temperature (now plus what is left), or "" unknown."""
+    try:
+        limit = float(temperature) + float(headroom)
+    except ValueError:
+        return ""
+    return str(round(limit)) if 40 <= limit <= 130 else ""
 
 
 def real_mounts() -> list[tuple[str, str]]:
@@ -242,7 +260,49 @@ def temperatures() -> dict[str, Any]:
                 readings.append({"sensor": f"{chip}: {label}", "temperature_c": round(int(read_text(path).strip()) / 1000, 1)})
             except (OSError, ValueError):
                 pass
-    return {"timestamp": now(), "temperatures": readings}
+    return {"timestamp": now(), "temperatures": readings, "cpu": cpu_temperature()}
+
+
+# The processor's own sensor, best first, and its maker's limit when the sensor gives none:
+# AMD Ryzen runs up to 95 °C by design (Tjmax), Intel up to 100 °C.
+CPU_SENSORS = (("k10temp", "Tctl", 95, "AMD Ryzen limit"), ("k10temp", "Tdie", 95, "AMD Ryzen limit"),
+               ("zenpower", "Tctl", 95, "AMD Ryzen limit"), ("zenpower", "Tdie", 95, "AMD Ryzen limit"),
+               ("coretemp", "Package id 0", 100, "Intel limit"))
+
+
+def cpu_temperature(root: Path = Path("/sys/class/hwmon")) -> dict[str, Any] | None:
+    """The processor's temperature and the temperature it slows itself down at, or None."""
+    found: dict[tuple[str, str], tuple[Path, str]] = {}
+    for hwmon in root.glob("hwmon*"):
+        try:
+            chip = read_text(hwmon / "name").strip()
+        except OSError:
+            continue
+        for label_path in hwmon.glob("temp*_label"):
+            try:
+                found.setdefault((chip, read_text(label_path).strip()), (hwmon, label_path.name.removesuffix("_label")))
+            except OSError:
+                pass
+    for chip, label, default, source in CPU_SENSORS:
+        if (chip, label) not in found:
+            continue
+        hwmon, temp = found[(chip, label)]
+        try:
+            value = int(read_text(hwmon / f"{temp}_input").strip()) / 1000
+        except (OSError, ValueError):
+            continue
+        limit, limit_source = default, source
+        for kind in ("crit", "max"):
+            try:
+                given = int(read_text(hwmon / f"{temp}_{kind}").strip()) / 1000
+            except (OSError, ValueError):
+                continue
+            if 60 <= given <= 130:
+                limit, limit_source = given, f"the sensor's {kind}"
+                break
+        return {"sensor": f"{chip}: {label}", "temperature_c": round(value, 1),
+                "limit_c": round(limit, 1), "limit_source": limit_source}
+    return None
 
 
 def processes() -> dict[str, Any]:

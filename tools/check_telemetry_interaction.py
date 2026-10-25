@@ -40,6 +40,8 @@ QML_CHECK = r'''
       test("a GPU machine shows every reading in one framed box", function() {
         host({gpuAvailable:true, gpu:2, vramUsed:23.8, vramTotal:31.8, cpu:3, memory:25, memoryUsed:7.5, memoryTotal:30.5,
               disk:58, diskUsed:114.7, diskTotal:198, systemTemperature:62, temperatureLabel:"nvme:fixture",
+              // Neither chip reports its own temperature: the hottest sensor shows in the title.
+              gpuTemperature:-1, cpuTemperature:-1,
               gpuHistory:[0,4,8,3,7,2,1,9,12,4,2,2,3,30,64,80,41,12,4,2], cpuHistory:[8,12,10,16,18,6,4,3,5,9,3,2,3,4,8,12,3,2,4,3]})
         check(item("telemetryTitle").text === "MACHINE", "title: " + item("telemetryTitle").text)
         ;["telemetryGpu", "telemetryGpuMemory", "telemetryCpu", "telemetryMemory", "telemetryDisk"].forEach(function(name) {
@@ -69,6 +71,28 @@ QML_CHECK = r'''
         host({memory:40, memoryUsed:12.2})
         check(Qt.colorEqual(item("telemetryMemory").tint, novaPanel.accent), "40% not neutral")
         capture("telemetry-hot")
+      })
+      test("temperatures warm only near their own limit", function() {
+        host({gpuAvailable:true, gpu:40, vramUsed:12, vramTotal:31.8, memory:40, memoryUsed:12.2, systemTemperature:62, temperatureLabel:"nvme:fixture",
+              gpuTemperature:72, gpuTemperatureLimit:90, cpuTemperature:47, cpuTemperatureLimit:95, cpuTemperatureSource:"AMD Ryzen limit"})
+        check(item("telemetryGpuTemp").visible && item("telemetryCpuTemp").visible, "temperature rows hidden")
+        check(item("telemetryGpuTemp").value === "72°C / 90°", "gpu: " + item("telemetryGpuTemp").value)
+        check(item("telemetryCpuTemp").value === "47°C / 95°", "cpu: " + item("telemetryCpuTemp").value)
+        check(Qt.colorEqual(item("telemetryGpuTemp").tint, novaPanel.accent), "72 of 90 not calm")
+        check(!item("telemetryTemperature").visible, "the title still shows the hottest sensor")
+        capture("telemetry-temperatures")
+        // 85 °C under full load is normal: warm (5° to spare), not the urgent colour.
+        host({gpuTemperature:85, cpuTemperature:88})
+        check(item("telemetryGpuTemp").value === "85°C WARM", "gpu: " + item("telemetryGpuTemp").value)
+        check(!Qt.colorEqual(item("telemetryGpuTemp").tint, Commons.Color.urgent) && !Qt.colorEqual(item("telemetryGpuTemp").tint, novaPanel.accent), "85 of 90 not warm")
+        check(item("telemetryCpuTemp").value === "88°C WARM", "cpu: " + item("telemetryCpuTemp").value)
+        check(!novaPanel.machineWarning, "warning before the limit")
+        host({gpuTemperature:90})
+        check(item("telemetryGpuTemp").value === "90°C AT LIMIT", "gpu: " + item("telemetryGpuTemp").value)
+        check(Qt.colorEqual(item("telemetryGpuTemp").tint, Commons.Color.urgent), "at the limit not urgent")
+        check(novaPanel.machineWarning, "no MACHINE dot at the limit")
+        capture("telemetry-temperatures-hot")
+        host({gpuTemperature:-1, gpuTemperatureLimit:-1, cpuTemperature:-1, cpuTemperatureLimit:-1})
       })
       console.warn("TELEMETRY_RESULTS " + JSON.stringify(results))
     }

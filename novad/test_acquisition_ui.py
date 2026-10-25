@@ -241,7 +241,7 @@ class AcquisitionUiContractTests(unittest.TestCase):
     def test_telemetry_hierarchy_uses_theme_derived_text_contrast(self):
         row = PANEL[PANEL.index('component TelemetryRow'):PANEL.index('component ChatLine')]
         self.assertIn('color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.72)', row)
-        self.assertIn('color: row.fraction >= 0.85 ? row.tint : root.foreground', row)
+        self.assertIn('color: row.tintFraction >= 0.85 ? row.tint : root.foreground', row)
         # Colour warms only near the limit, from theme colours.
         self.assertIn('if (fraction >= 0.95) return Commons.Color.urgent', PANEL)
         self.assertIn('if (fraction >= 0.85) return Qt.rgba((accent.r + Commons.Color.urgent.r) / 2', PANEL)

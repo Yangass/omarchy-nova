@@ -41,6 +41,10 @@ ShellRoot {
     property real vramUsed: 4.2
     property real vramTotal: 16
     property real gpuTemperature: 44
+    property real gpuTemperatureLimit: 90
+    property real cpuTemperature: 52
+    property real cpuTemperatureLimit: 95
+    property string cpuTemperatureSource: "AMD Ryzen limit"
     property real gpuPower: 38
     property real disk: 51
     property real diskUsed: 214

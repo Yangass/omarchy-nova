@@ -41,8 +41,9 @@ already, NOVA still saves you the guesswork and the upkeep.
 - **Claude Code, Codex and Antigravity too.** Omarchy installs the first two, and Google's
   installer adds Antigravity's `agy`; **ONLINE CLIS → SET UP** adds OPEN CLI for each in one
   approval. They sign in with your own account; NOVA keeps no keys.
-- **Shows what your machine is doing.** CPU, graphics, memory, disk, network, and which
-  model is currently loaded, with one click to free its memory.
+- **Shows what your machine is doing.** CPU, graphics, memory, disk, network, the CPU and
+  GPU temperatures against each chip's own limit, and which model is currently loaded, with
+  one click to free its memory.
 - **Never does anything behind your back.** Every download, deletion, restart or app
   launch waits for your **Approve** on a card that says exactly what will happen.
 - **Secure by design.** NOVA's helpers answer only your own user account, nothing runs

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.17.2
+
+- **GPU and CPU temperatures in MACHINE.** Two bars beside the loads, **GPU TEMP** and
+  **CPU TEMP**, in the same style. Each is coloured by how close the chip is to the
+  temperature it slows itself down at, not by how full the bar is: 85 °C under full load is
+  normal for many graphics cards. It stays calm until 10° from that limit, says **WARM**
+  within it and **AT LIMIT** at it. The graphics card's limit comes from its driver (NVIDIA
+  reports how many degrees are left); the processor's from its sensor, or its maker (AMD
+  Ryzen 95 °C, Intel 100 °C). The MACHINE dot now lights at the limit, not at a fixed 85 °C.
+
 ## 0.17.1
 
 - **Antigravity as an online CLI.** Google's Antigravity CLI (`agy`) joins Claude Code and
