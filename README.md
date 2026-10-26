@@ -127,6 +127,14 @@ No account, no telemetry. And on your computer:
   runtime folder, which no other account on the PC can open, and on every connection
   they ask the Linux kernel who is on the other side. Nobody else can reach them or
   answer in their place, and a web page open in your browser can't reach them at all.
+- **OpenCode in its own network.** OpenCode, the coding CLI NOVA opens on your local
+  model, runs in a private network space of its own: it reaches Ollama only through
+  NOVA, which first checks with the kernel that Ollama's own account is on the other end,
+  and the internet through `pasta` (from the `passt` package). If Ollama is stopped and
+  something else takes its port, OpenCode's prompts and your project go nowhere. One
+  thing to know: inside it, `localhost` is OpenCode's own, so a dev server you started
+  outside isn't reachable from OpenCode (servers it starts itself are). Without `passt`,
+  OpenCode runs with no internet and says so.
 - **No root.** NOVA runs as you. The only password prompt is the one-time Ollama install.
 - **You approve every change.** The chat model can suggest an action; only your click on
   **Approve** runs it, once, before the approval expires.

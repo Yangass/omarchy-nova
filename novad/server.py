@@ -873,6 +873,9 @@ def cli_profiles_state() -> tuple[int, dict[str, Any]]:
         if item.get("kind") == "opencode":
             # OpenCode loads its build itself (one copy with chat: same files, same context).
             blocked = None if item.get("valid") is True else (item.get("error") or "invalid_profile")
+            # Ollama must answer through NOVA's checked connection first (review #12377);
+            # inside, OpenCode reaches it only through the sandbox's checked relay.
+            if blocked is None and resident is None: blocked = "provider_unavailable"
             if blocked is None and nova_state == "model_switching": blocked = "model_loading"
             build = CLI_BUILDS.load().get(item.get("build", ""))
             if blocked is None and build is None: blocked = "build_missing"

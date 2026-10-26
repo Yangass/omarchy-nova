@@ -33,6 +33,9 @@ CLI_TOOLS = {"qwen-code"}
 OPENCODE_CARE = {"ask": {"edit": "ask", "bash": "ask"}, "edits": {"edit": "allow", "bash": "ask"}}
 OPENCODE_BUILD = re.compile(r"nova-[a-z0-9][a-z0-9.-]{0,80}-cli")
 NOVA_MCP = Path(__file__).resolve().parent / "nova_mcp.py"
+# OpenCode runs inside this (marketplace review #12377): its own loopback, where 11434 is a
+# relay through NOVA's checked connection, and the internet through pasta.
+OPENCODE_SANDBOX = Path(__file__).resolve().parent / "opencode_sandbox.py"
 # Tells the model about NOVA's two tools: OpenCode 2 offers MCP tools inside its code
 # runtime, where a model doesn't always look for them on its own (2026-10-23, live test).
 NOVA_INSTRUCTIONS = Path(__file__).resolve().parent / "opencode-instructions.md"
@@ -386,7 +389,8 @@ def open_coding_cli(snapshot: dict[str, Any]) -> dict[str, Any]:
         message = "Launch request sent. NOVA cannot confirm the terminal appeared."
     elif opencode:
         argv = ["/usr/bin/omarchy", "launch", "tui", "--app-id=" + CLI_APP_ID, "/usr/bin/env", "-C", profile["project"],
-                "OPENCODE_CONFIG_CONTENT=" + opencode_config(profile), profile["command"], "--standalone"]
+                "OPENCODE_CONFIG_CONTENT=" + opencode_config(profile), CLI_PYTHON, "-B", str(OPENCODE_SANDBOX),
+                "--build", profile["build"], "--", profile["command"], "--standalone"]
         extra = {"model": profile["model"], "build": profile["build"]}
         message = "Launch request sent. NOVA cannot confirm the terminal appeared; the first start may download OpenCode."
     else:

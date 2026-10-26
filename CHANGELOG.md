@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.17.3
+
+- **OpenCode in its own network space** (security, thanks to the marketplace review).
+  OpenCode used to reach Ollama on `127.0.0.1:11434` by itself, without NOVA's check of
+  who answers there: while Ollama was stopped, another account on the PC could take that
+  port and receive your prompts and project. Now OPEN CLI starts OpenCode in a private
+  network space where Ollama is reachable only through NOVA, which checks every request
+  with the kernel, and only for OpenCode's own model. The internet still works through
+  `pasta` (passt). If Ollama isn't answering, OpenCode doesn't start. Inside it,
+  `localhost` is OpenCode's own: a dev server you run outside isn't reachable from it.
+
 ## 0.17.2
 
 - **GPU and CPU temperatures in MACHINE.** Two bars beside the loads, **GPU TEMP** and

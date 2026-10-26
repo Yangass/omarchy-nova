@@ -71,6 +71,20 @@ class OpenCodeProfileTests(ProfileFixture):
         self.assertTrue(server["command"][-1].endswith("nova-actions/nova_mcp.py"))
         self.assertNotIn("sh", [Path(part).name for part in argv])
 
+    def test_opencode_starts_only_inside_novas_private_network_space(self):
+        # Marketplace review #12377 (2026-10-26): OpenCode reached 127.0.0.1:11434 itself,
+        # without NOVA's check of who answers there. It now starts through the sandbox,
+        # which gives it its own loopback and a checked relay to Ollama.
+        self.write(self.opencode())
+        with patch.dict(os.environ, SESSION), patch.object(actions.subprocess, "Popen", return_value=Process(timeout=True)) as popen:
+            actions.open_coding_cli({"profile_id": "opencode-qwen3-8b", "model": "qwen3:8b"})
+        argv = popen.call_args.args[0]
+        sandbox = argv.index(str(actions.OPENCODE_SANDBOX))
+        self.assertEqual(argv[sandbox - 2:sandbox], [actions.CLI_PYTHON, "-B"])
+        self.assertEqual(argv[sandbox + 1:sandbox + 4], ["--build", "nova-qwen3-8b-cli", "--"])
+        self.assertEqual(argv[sandbox + 4:], [str(self.command), "--standalone"])
+        self.assertTrue(actions.OPENCODE_SANDBOX.is_file())
+
     def test_the_wrong_model_is_refused(self):
         self.write(self.opencode())
         with patch.dict(os.environ, SESSION), patch.object(actions.subprocess, "Popen") as popen:
@@ -89,6 +103,11 @@ class OpenCodeProfileTests(ProfileFixture):
         with patch.object(novad, "actions_get", return_value=(200, payload)), patch.object(novad, "resident_models", return_value=[]), \
              patch.object(novad.CLI_BUILDS, "load", return_value={}):
             self.assertEqual(novad.cli_profiles_state()[1]["profiles"][0]["blocked"], "build_missing")
+        # Ollama not answering through NOVA's checked connection (stopped, or another
+        # account holds its port): OpenCode doesn't start (review #12377).
+        with patch.object(novad, "actions_get", return_value=(200, payload)), patch.object(novad, "resident_models", return_value=None), \
+             patch.object(novad.CLI_BUILDS, "load", return_value={"nova-qwen3-8b-cli": {"base": "qwen3:8b", "context": 32768}}):
+            self.assertEqual(novad.cli_profiles_state()[1]["profiles"][0]["blocked"], "provider_unavailable")
 
 
 class McpTests(unittest.TestCase):
